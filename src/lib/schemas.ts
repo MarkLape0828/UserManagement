@@ -37,3 +37,23 @@ export const AdminEditUserSchema = z.object({
 });
 
 export type AdminEditUserFormData = z.infer<typeof AdminEditUserSchema>;
+
+// Department Schemas
+export const DepartmentSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, { message: 'Department name is required.' }).max(100, { message: 'Department name cannot exceed 100 characters.' }),
+  status: z.enum(['active', 'inactive']),
+  employeeCount: z.number().optional(), // Optional, as it's a placeholder for now
+});
+export type Department = z.infer<typeof DepartmentSchema>;
+
+export const AddDepartmentSchema = z.object({
+  name: z.string().min(1, { message: 'Department name is required.' }).max(100, { message: 'Department name cannot exceed 100 characters.' }),
+});
+export type AddDepartmentFormData = z.infer<typeof AddDepartmentSchema>;
+
+export const EditDepartmentSchema = z.object({
+  name: z.string().min(1, { message: 'Department name is required.' }).max(100, { message: 'Department name cannot exceed 100 characters.' }),
+  status: z.enum(['active', 'inactive'], { required_error: 'Status is required.' }),
+});
+export type EditDepartmentFormData = z.infer<typeof EditDepartmentSchema>;
