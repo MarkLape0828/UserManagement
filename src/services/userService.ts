@@ -12,8 +12,16 @@ const USERS_COLLECTION = 'users';
 // Firebase Authentication is the recommended way to handle users and passwords.
 // For this prototype, we are storing plaintext passwords for simplicity.
 
+function ensureDbInitialized() {
+  if (!db) {
+    console.error("FATAL: Firestore DB is not initialized in userService. Throwing error.");
+    throw new Error("Database service is not available. Firebase initialization may have failed. Check server logs.");
+  }
+}
+
 export async function getUserByEmail(email: string): Promise<AppUser | null> {
-  const usersRef = collection(db, USERS_COLLECTION);
+  ensureDbInitialized();
+  const usersRef = collection(db!, USERS_COLLECTION);
   const q = query(usersRef, where('email', '==', email));
   const querySnapshot = await getDocs(q);
 
@@ -25,7 +33,8 @@ export async function getUserByEmail(email: string): Promise<AppUser | null> {
 }
 
 export async function getUserById(userId: string): Promise<AppUser | null> {
-  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  ensureDbInitialized();
+  const userDocRef = doc(db!, USERS_COLLECTION, userId);
   const userDocSnap = await getDoc(userDocRef);
 
   if (!userDocSnap.exists()) {
@@ -35,29 +44,39 @@ export async function getUserById(userId: string): Promise<AppUser | null> {
 }
 
 export async function createUser(userData: Omit<AppUser, 'id'>): Promise<AppUser> {
+  ensureDbInitialized();
   // In a real app, hash password here before saving if not using Firebase Auth
-  const usersRef = collection(db, USERS_COLLECTION);
+  const usersRef = collection(db!, USERS_COLLECTION);
   const docRef = await addDoc(usersRef, userData);
   return { id: docRef.id, ...userData };
 }
 
 // Used for creating a user with a specific ID (e.g., initial admin)
 export async function createUserWithId(userId: string, userData: Omit<AppUser, 'id'>): Promise<AppUser> {
-    const userDocRef = doc(db, USERS_COLLECTION, userId);
+    ensureDbInitialized();
+    const userDocRef = doc(db!, USERS_COLLECTION, userId);
     await setDoc(userDocRef, userData);
     return { id: userId, ...userData };
 }
 
 
 export async function adminUpdateUser(userId: string, userData: Partial<Omit<AppUser, 'id' | 'password'>>): Promise<AppUser | null> {
-  const userDocRef = doc(db, USERS_COLLECTION, userId);
+  ensureDbInitialized();
+  const userDocRef = doc(db!, USERS_COLLECTION, userId);
   await updateDoc(userDocRef, userData);
-  const updatedUser = await getUserById(userId);
-  return updatedUser;
+  // Re-fetch to ensure we return the complete, updated user object
+  const updatedUserSnap = await getDoc(userDocRef);
+  if (!updatedUserSnap.exists()) {
+      // This case should ideally not happen if updateDoc didn't throw and ID is correct
+      console.error(`User with ID ${userId} not found after update attempt.`);
+      return null; 
+  }
+  return { id: updatedUserSnap.id, ...updatedUserSnap.data() } as AppUser;
 }
 
 export async function getAllUsers(): Promise<AppUser[]> {
-  const usersRef = collection(db, USERS_COLLECTION);
+  ensureDbInitialized();
+  const usersRef = collection(db!, USERS_COLLECTION);
   const querySnapshot = await getDocs(usersRef);
   const usersList: AppUser[] = [];
   querySnapshot.forEach((doc) => {

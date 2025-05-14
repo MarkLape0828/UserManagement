@@ -15,13 +15,32 @@ const firebaseConfig: FirebaseOptions = {
 
 // Initialize Firebase
 let app;
-if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
+let db: ReturnType<typeof getFirestore> | null = null;
+
+if (!firebaseConfig.projectId) {
+  console.error(
+    'CRITICAL: Firebase projectId is missing or undefined in environment variables. Firebase will not be initialized. Ensure NEXT_PUBLIC_FIREBASE_PROJECT_ID is correctly set in your .env.local file and the Next.js server has been restarted.'
+  );
 } else {
-  app = getApp();
+  try {
+    if (!getApps().length) {
+      console.log('Initializing new Firebase app...');
+      app = initializeApp(firebaseConfig);
+    } else {
+      console.log('Getting existing Firebase app.');
+      app = getApp();
+    }
+    db = getFirestore(app);
+    console.log('Firebase app initialized and Firestore instance obtained successfully.');
+  } catch (error) {
+    console.error('CRITICAL: Firebase initialization failed catastrophically. Error:', error);
+    // app will be undefined and db will remain null
+  }
 }
 
-const db = getFirestore(app);
-// const auth = getAuth(app); // If using Firebase client-side auth features directly
+if (!db) {
+    // This log will appear if db is still null after the initialization block.
+    console.error("CRITICAL: Firestore database (db) instance is null after initialization attempt. Database operations will fail. Review Firebase configuration and previous logs.");
+}
 
 export { app, db /*, auth */ };

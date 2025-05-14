@@ -1,77 +1,90 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, addDoc, doc, updateDoc, serverTimestamp, query, where, getDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, doc, updateDoc, serverTimestamp, query, where, getDoc, Timestamp } from 'firebase/firestore';
 import type { Department, AddDepartmentFormData, EditDepartmentFormData } from '@/lib/schemas';
 
 const DEPARTMENTS_COLLECTION = 'departments';
 
+function ensureDbInitialized() {
+  if (!db) {
+    console.error("FATAL: Firestore DB is not initialized in departmentService. Throwing error.");
+    throw new Error("Database service is not available. Firebase initialization may have failed. Check server logs.");
+  }
+}
+
+function mapFirestoreDocToDepartment(docSnap: any): Department {
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    ...data,
+    // Ensure timestamps are handled if your schema expects specific types (e.g., JS Date)
+    // For now, assuming direct spread is okay or further transformation happens in actions/components
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
+  } as Department;
+}
+
+
 export async function getAllDepartments(): Promise<Department[]> {
+  ensureDbInitialized();
   try {
-    const departmentsRef = collection(db, DEPARTMENTS_COLLECTION);
+    const departmentsRef = collection(db!, DEPARTMENTS_COLLECTION);
     const querySnapshot = await getDocs(departmentsRef);
     const departmentsList: Department[] = [];
-    querySnapshot.forEach((doc) => {
-      departmentsList.push({ id: doc.id, ...doc.data() } as Department);
+    querySnapshot.forEach((docSnap) => {
+      departmentsList.push(mapFirestoreDocToDepartment(docSnap));
     });
     return departmentsList;
   } catch (error) {
-    console.error("Error fetching all departments:", error);
-    return [];
+    console.error("Error fetching all departments from Firestore:", error);
+    throw error; // Re-throw to be caught by server action
   }
 }
 
 export async function createDepartment(data: AddDepartmentFormData): Promise<Department | null> {
+  ensureDbInitialized();
   try {
-    // Check for existing department with the same name (case-insensitive)
-    const departmentsRef = collection(db, DEPARTMENTS_COLLECTION);
+    const departmentsRef = collection(db!, DEPARTMENTS_COLLECTION);
     const q = query(departmentsRef, where('nameLower', '==', data.name.toLowerCase()));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
-      // Department with this name already exists
       return null; 
     }
 
     const newDepartmentData = {
       ...data,
-      nameLower: data.name.toLowerCase(), // For case-insensitive checks
-      status: 'active', // Default status
+      nameLower: data.name.toLowerCase(),
+      status: 'active', 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    const docRef = await addDoc(collection(db, DEPARTMENTS_COLLECTION), newDepartmentData);
+    const docRef = await addDoc(collection(db!, DEPARTMENTS_COLLECTION), newDepartmentData);
     
-    // Fetch the created document to include the ID and server-generated timestamps
     const newDocSnap = await getDoc(docRef);
     if (newDocSnap.exists()) {
-        const createdDept = newDocSnap.data();
-        // Convert Firestore Timestamps to serializable format (e.g., ISO string or JS Date) if needed by schema
-        // For now, assuming schema can handle it or client will format.
-        // If schema expects JS Date, you'd do:
-        // hireDate: createdDept.hireDate.toDate()
-        return { id: newDocSnap.id, ...createdDept } as Department;
+        return mapFirestoreDocToDepartment(newDocSnap);
     }
     return null;
 
   } catch (error) {
-    console.error("Error creating department:", error);
-    throw error; // Re-throw to be caught by server action
+    console.error("Error creating department in Firestore:", error);
+    throw error; 
   }
 }
 
 export async function updateExistingDepartment(departmentId: string, data: EditDepartmentFormData): Promise<Department | null> {
+  ensureDbInitialized();
   try {
-    const departmentDocRef = doc(db, DEPARTMENTS_COLLECTION, departmentId);
+    const departmentDocRef = doc(db!, DEPARTMENTS_COLLECTION, departmentId);
     
-    // If name is being changed, check for uniqueness
     if (data.name) {
         const currentDocSnap = await getDoc(departmentDocRef);
         if (currentDocSnap.exists() && currentDocSnap.data().name.toLowerCase() !== data.name.toLowerCase()) {
-            const departmentsRef = collection(db, DEPARTMENTS_COLLECTION);
+            const departmentsRef = collection(db!, DEPARTMENTS_COLLECTION);
             const q = query(departmentsRef, where('nameLower', '==', data.name.toLowerCase()));
             const querySnapshot = await getDocs(q);
             if (!querySnapshot.empty && querySnapshot.docs.some(d => d.id !== departmentId)) {
-                // Another department with this new name already exists
                 return null; 
             }
         }
@@ -86,25 +99,26 @@ export async function updateExistingDepartment(departmentId: string, data: EditD
     
     const updatedDocSnap = await getDoc(departmentDocRef);
     if (updatedDocSnap.exists()) {
-        return { id: updatedDocSnap.id, ...updatedDocSnap.data() } as Department;
+        return mapFirestoreDocToDepartment(updatedDocSnap);
     }
     return null;
   } catch (error) {
-    console.error("Error updating department:", error);
-    throw error; // Re-throw
+    console.error("Error updating department in Firestore:", error);
+    throw error; 
   }
 }
 
 export async function getDepartmentById(departmentId: string): Promise<Department | null> {
+  ensureDbInitialized();
   try {
-    const deptDocRef = doc(db, DEPARTMENTS_COLLECTION, departmentId);
+    const deptDocRef = doc(db!, DEPARTMENTS_COLLECTION, departmentId);
     const docSnap = await getDoc(deptDocRef);
     if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as Department;
+      return mapFirestoreDocToDepartment(docSnap);
     }
     return null;
   } catch (error) {
-    console.error(`Error fetching department by ID ${departmentId}:`, error);
-    return null;
+    console.error(`Error fetching department by ID ${departmentId} from Firestore:`, error);
+    throw error;
   }
 }

@@ -1,26 +1,34 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, addDoc, doc, updateDoc, serverTimestamp, getDoc, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, addDoc, doc, updateDoc, serverTimestamp, getDoc, query, where, Timestamp, setDoc } from 'firebase/firestore';
 import type { Employee, AuditLogEntry, AddEmployeeFormData, EditEmployeeFormData } from '@/lib/schemas';
 
 const EMPLOYEES_COLLECTION = 'employees';
-const AUDIT_LOG_COLLECTION = 'auditLog'; // Could be a subcollection under employees
+const AUDIT_LOG_COLLECTION = 'auditLog';
+
+function ensureDbInitialized() {
+  if (!db) {
+    console.error("FATAL: Firestore DB is not initialized in employeeService. Throwing error.");
+    throw new Error("Database service is not available. Firebase initialization may have failed. Check server logs.");
+  }
+}
 
 function mapFirestoreDocToEmployee(docSnap: any): Employee {
   const data = docSnap.data();
   return {
     id: docSnap.id,
     ...data,
-    // Convert Firestore Timestamp to JavaScript Date for hireDate
     hireDate: data.hireDate instanceof Timestamp ? data.hireDate.toDate() : new Date(data.hireDate),
-    // Ensure other fields conform to Employee schema if necessary
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : undefined),
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : undefined),
   } as Employee;
 }
 
 export async function getAllEmployees(): Promise<Employee[]> {
+  ensureDbInitialized();
   try {
-    const employeesRef = collection(db, EMPLOYEES_COLLECTION);
+    const employeesRef = collection(db!, EMPLOYEES_COLLECTION);
     const querySnapshot = await getDocs(employeesRef);
     const employeesList: Employee[] = [];
     querySnapshot.forEach((docSnap) => {
@@ -28,64 +36,65 @@ export async function getAllEmployees(): Promise<Employee[]> {
     });
     return employeesList;
   } catch (error) {
-    console.error("Error fetching all employees:", error);
-    return [];
+    console.error("Error fetching all employees from Firestore:", error);
+    throw error;
   }
 }
 
 export async function getEmployeeById(employeeId: string): Promise<Employee | null> {
+  ensureDbInitialized();
   try {
-    const employeeDocRef = doc(db, EMPLOYEES_COLLECTION, employeeId);
+    const employeeDocRef = doc(db!, EMPLOYEES_COLLECTION, employeeId);
     const docSnap = await getDoc(employeeDocRef);
     if (docSnap.exists()) {
       return mapFirestoreDocToEmployee(docSnap);
     }
     return null;
   } catch (error) {
-    console.error(`Error fetching employee by ID ${employeeId}:`, error);
-    return null;
+    console.error(`Error fetching employee by ID ${employeeId} from Firestore:`, error);
+    throw error;
   }
 }
 
-export async function createEmployee(data: AddEmployeeFormData, employeeId: string): Promise<Employee | null> {
+export async function createEmployee(data: AddEmployeeFormData): Promise<Employee | null> {
+  ensureDbInitialized();
   try {
-    // Check if a user ID is already associated with an employee
-    const employeesRef = collection(db, EMPLOYEES_COLLECTION);
+    const employeesRef = collection(db!, EMPLOYEES_COLLECTION);
     const q = query(employeesRef, where('userId', '==', data.userId));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
-      return null; // User is already an employee
+      console.log(`Attempt to create employee for already linked userId: ${data.userId}`);
+      return null; 
     }
 
+    // Firestore will auto-generate an ID if we use addDoc
     const newEmployeeData = {
       ...data,
-      id: employeeId, // Using the pre-generated ID
-      hireDate: Timestamp.fromDate(new Date(data.hireDate)), // Convert JS Date to Firestore Timestamp
+      hireDate: Timestamp.fromDate(new Date(data.hireDate)), 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    // Since we are providing our own ID, we use setDoc
-    const employeeDocRef = doc(db, EMPLOYEES_COLLECTION, employeeId);
-    await setDoc(employeeDocRef, newEmployeeData);
+    const docRef = await addDoc(collection(db!, EMPLOYEES_COLLECTION), newEmployeeData);
     
-    const newDocSnap = await getDoc(employeeDocRef);
+    const newDocSnap = await getDoc(docRef);
      if (newDocSnap.exists()) {
         return mapFirestoreDocToEmployee(newDocSnap);
     }
-    return null; // Should not happen if setDoc was successful
+    return null; 
 
   } catch (error) {
-    console.error("Error creating employee:", error);
+    console.error("Error creating employee in Firestore:", error);
     throw error;
   }
 }
 
 export async function updateExistingEmployee(employeeId: string, data: EditEmployeeFormData): Promise<Employee | null> {
+  ensureDbInitialized();
   try {
-    const employeeDocRef = doc(db, EMPLOYEES_COLLECTION, employeeId);
+    const employeeDocRef = doc(db!, EMPLOYEES_COLLECTION, employeeId);
     const updateData = {
       ...data,
-      hireDate: Timestamp.fromDate(new Date(data.hireDate)), // Convert JS Date to Firestore Timestamp
+      hireDate: Timestamp.fromDate(new Date(data.hireDate)), 
       updatedAt: serverTimestamp(),
     };
     await updateDoc(employeeDocRef, updateData);
@@ -97,29 +106,28 @@ export async function updateExistingEmployee(employeeId: string, data: EditEmplo
     return null;
 
   } catch (error) {
-    console.error("Error updating employee:", error);
+    console.error("Error updating employee in Firestore:", error);
     throw error;
   }
 }
 
-// --- Audit Log Service Functions (Basic Implementation) ---
 export async function createAuditLogEntry(
   employeeId: string, 
   action: string, 
   details: string, 
   changedByUserId: string
 ): Promise<AuditLogEntry | null> {
+  ensureDbInitialized();
   try {
     const logData = {
       employeeId,
       action,
       details,
       changedByUserId,
-      timestamp: serverTimestamp(), // Firestore server timestamp
+      timestamp: serverTimestamp(), 
     };
-    const docRef = await addDoc(collection(db, AUDIT_LOG_COLLECTION), logData);
+    const docRef = await addDoc(collection(db!, AUDIT_LOG_COLLECTION), logData);
     
-    // Fetch the created log to include ID and timestamp
     const newLogSnap = await getDoc(docRef);
     if (newLogSnap.exists()) {
         const createdLog = newLogSnap.data();
@@ -131,15 +139,16 @@ export async function createAuditLogEntry(
     }
     return null;
   } catch (error) {
-    console.error("Error creating audit log entry:", error);
-    return null; // Or throw error
+    console.error("Error creating audit log entry in Firestore:", error);
+    throw error; 
   }
 }
 
 export async function getAuditLogsForEmployee(employeeId: string): Promise<AuditLogEntry[]> {
+    ensureDbInitialized();
     try {
-        const logsRef = collection(db, AUDIT_LOG_COLLECTION);
-        const q = query(logsRef, where('employeeId', '==', employeeId)); // Add orderBy('timestamp', 'desc') if needed
+        const logsRef = collection(db!, AUDIT_LOG_COLLECTION);
+        const q = query(logsRef, where('employeeId', '==', employeeId)); 
         const querySnapshot = await getDocs(q);
         const logs: AuditLogEntry[] = [];
         querySnapshot.forEach((docSnap) => {
@@ -150,9 +159,9 @@ export async function getAuditLogsForEmployee(employeeId: string): Promise<Audit
                 timestamp: data.timestamp instanceof Timestamp ? data.timestamp.toDate().toISOString() : new Date(data.timestamp).toISOString(),
             } as AuditLogEntry);
         });
-        return logs.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort client-side if not by query
+        return logs.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); 
     } catch (error) {
-        console.error(`Error fetching audit logs for employee ${employeeId}:`, error);
-        return [];
+        console.error(`Error fetching audit logs for employee ${employeeId} from Firestore:`, error);
+        throw error;
     }
 }
