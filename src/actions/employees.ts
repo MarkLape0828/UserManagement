@@ -6,13 +6,8 @@ import type { Employee, AuditLogEntry, AddEmployeeFormData, EditEmployeeFormData
 import { getUsers, type AppUser } from './auth'; // To link employees to users
 import { getDepartments, type Department } from './departments'; // To link employees to departments
 
-// In-memory store for demo purposes
-let employees: Employee[] = [
-  { id: 'EMP001', userId: '2', position: 'Software Engineer', departmentId: 'dept_2', hireDate: new Date('2023-01-15'), status: 'active' },
-  { id: 'EMP002', userId: '3', position: 'HR Specialist', departmentId: 'dept_1', hireDate: new Date('2022-05-20'), status: 'active' },
-  // Removed duplicate sample employee EMP003
-];
-
+// In-memory store for demo purposes - Initialize with empty arrays
+let employees: Employee[] = [];
 let auditLog: AuditLogEntry[] = [];
 
 function generateEmployeeId(): string {
@@ -131,4 +126,3 @@ export async function updateEmployee(employeeId: string, data: EditEmployeeFormD
 // export async function getAuditLogForEmployee(employeeId: string): Promise<AuditLogEntry[]> {
 //   return auditLog.filter(log => log.employeeId === employeeId).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 // }
-

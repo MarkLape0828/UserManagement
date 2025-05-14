@@ -16,12 +16,9 @@ export interface AppUser extends Omit<UserSession, 'name'> { // Omit 'name' if i
 }
 
 // In-memory store for demo purposes. Replace with a database in a real app.
+// Only one admin user to start.
 const users: AppUser[] = [
   { id: '1', firstName: 'Admin', lastName: 'User', email: 'admin@example.com', role: 'admin', status: 'active', password: 'password123' },
-  { id: '2', firstName: 'Employee', lastName: 'User', email: 'employee@example.com', role: 'employee', status: 'active', password: 'password123' },
-  { id: '3', firstName: 'User', lastName: 'One', email: 'user@example.com', role: 'employee', status: 'active', password: 'userpass' },
-  { id: '4', firstName: 'Admin', lastName: 'Two', email: 'admin2@example.com', role: 'admin', status: 'active', password: 'amdminpass' },
-  { id: '5', firstName: 'Unassigned', lastName: 'Employee', email: 'unassigned@example.com', role: 'employee', status: 'active', password: 'password123' },
 ];
 
 export async function login(data: LoginFormData): Promise<{ success: boolean; message: string }> {

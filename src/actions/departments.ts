@@ -3,12 +3,8 @@
 
 import type { Department, AddDepartmentFormData, EditDepartmentFormData } from '@/lib/schemas';
 
-// Renamed to avoid conflict if 'departments' is used as a parameter or local var elsewhere.
-let departmentsStore: Department[] = [
-  { id: 'dept_1', name: 'Human Resources', status: 'active' },
-  { id: 'dept_2', name: 'Engineering', status: 'active' },
-  { id: 'dept_3', name: 'Marketing', status: 'inactive' },
-];
+// Initialize with an empty array for departments
+let departmentsStore: Department[] = [];
 
 export async function getDepartments(): Promise<Department[]> {
   // Ensure departmentsStore is always an array at the very start.
@@ -19,12 +15,8 @@ export async function getDepartments(): Promise<Department[]> {
   
   try {
     // Return a deep copy to prevent mutations and ensure serializability
-    // JSON.stringify will convert an empty array to "[]"
-    // JSON.parse("[]") will convert back to []
     return JSON.parse(JSON.stringify(departmentsStore));
   } catch (error) {
-    // This catch block might be redundant if departmentsStore is always an array of simple objects,
-    // but it's here for safety.
     console.error("[Server Action] Error in getDepartments during JSON processing:", error);
     return []; // Fallback to empty array on any error during stringify/parse
   }
