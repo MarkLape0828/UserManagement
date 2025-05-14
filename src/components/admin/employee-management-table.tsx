@@ -43,17 +43,27 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [emps, users, depts] = await Promise.all([
+      const [empsResponse, usersResponse, deptsResponse] = await Promise.all([
         getEnrichedEmployees(),
         getUsersNotYetEmployees(),
         getDepartments()
       ]);
-      setEmployees(emps);
-      setAvailableUsers(users);
-      setAvailableDepartments(depts.filter(d => d.status === 'active')); // Only active departments for assignment
+
+      // Ensure responses are arrays before setting state
+      const validEmps = Array.isArray(empsResponse) ? empsResponse : [];
+      const validUsers = Array.isArray(usersResponse) ? usersResponse : [];
+      const validDepts = Array.isArray(deptsResponse) ? deptsResponse : [];
+
+      setEmployees(validEmps);
+      setAvailableUsers(validUsers);
+      setAvailableDepartments(validDepts.filter(d => d.status === 'active')); // Only active departments for assignment
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to fetch employee data.', variant: 'destructive' });
       console.error("Failed to fetch employee data:", error);
+      // Set to empty arrays in case of error to maintain type consistency and prevent .length errors
+      setEmployees([]);
+      setAvailableUsers([]);
+      setAvailableDepartments([]);
     } finally {
       setIsLoading(false);
     }
@@ -81,7 +91,7 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
     setEditingEmployee(null);
   };
 
-  if (isLoading && employees.length === 0) {
+  if (isLoading && employees.length === 0 && availableUsers.length === 0 && availableDepartments.length === 0) {
     return <div className="flex justify-center items-center p-8"><RefreshCw className="h-8 w-8 animate-spin text-primary" /> <span className="ml-2">Loading employees...</span></div>;
   }
 
@@ -192,3 +202,4 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
     </>
   );
 }
+
