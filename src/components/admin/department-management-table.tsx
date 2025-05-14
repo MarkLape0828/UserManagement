@@ -31,17 +31,22 @@ export function DepartmentManagementTable() {
     setIsLoading(true);
     try {
       const fetchedDepartmentsData = await getDepartments();
-      // Ensure fetchedDepartmentsData is an array before sorting
+      // Log what is actually received from the server action
+      console.log('[Client] fetchDepartments received:', fetchedDepartmentsData, 'IsArray:', Array.isArray(fetchedDepartmentsData));
+
       if (Array.isArray(fetchedDepartmentsData)) {
         setDepartments(fetchedDepartmentsData.sort((a, b) => a.name.localeCompare(b.name)));
       } else {
-        console.error("fetchDepartments: getDepartments did not return an array.", fetchedDepartmentsData);
-        setDepartments([]); // Set to empty array to prevent further errors
+        // This block indicates the server action did not return an array as expected
+        console.error("[Client] fetchDepartments: getDepartments did not return a valid array. Value received:", fetchedDepartmentsData);
+        setDepartments([]); // Default to empty array to prevent further errors
         toast({ title: 'Error', description: 'Failed to fetch departments or data is invalid.', variant: 'destructive' });
       }
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to fetch departments.', variant: 'destructive' });
-      console.error("Failed to fetch departments:", error);
+      // This catch block handles errors during the await getDepartments() call itself (e.g., network errors, unhandled server exceptions)
+      toast({ title: 'Error', description: 'An error occurred while fetching departments.', variant: 'destructive' });
+      console.error("[Client] fetchDepartments: Exception caught while fetching departments:", error);
+      setDepartments([]); // Ensure departments is an empty array on error
     } finally {
       setIsLoading(false);
     }
