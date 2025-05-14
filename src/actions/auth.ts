@@ -6,60 +6,56 @@ import { LoginSchema, RegisterSchema, type LoginFormData, type RegisterFormData,
 import { setUserSession, clearUserSession, type UserSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { ADMIN_DASHBOARD_PATH, EMPLOYEE_PROFILE_PATH } from '@/lib/constants';
-import { getUserByEmail, createUser, getAllUsers, adminUpdateUser as adminUpdateUserService, createUserWithId, getUserById } from '@/services/userService';
 
-// Extended user type for internal management, UserSession is the shape for the cookie
-// IMPORTANT: Password Handling
-// In a real application, passwords should NEVER be stored in plaintext.
-// They should be hashed securely on the server before being stored.
-// Firebase Authentication is the recommended way to handle users and passwords.
-// For this prototype, we are storing plaintext passwords for simplicity.
-export interface AppUser extends Omit<UserSession, 'firstName' | 'lastName'> { 
+// IMPORTANT: Password Handling & Data Persistence
+// This version uses an IN-MEMORY array for users. Data will be RESET on server restart.
+// Passwords are stored in plaintext for simplicity. DO NOT DO THIS IN PRODUCTION.
+export interface AppUser extends Omit<UserSession, 'firstName' | 'lastName'> {
   firstName: string;
   lastName: string;
   status: 'active' | 'inactive';
-  password?: string; // Stored in plaintext for demo, DO NOT DO THIS IN PRODUCTION
+  password?: string; 
 }
 
-// Admin user credentials (will be created in Firestore if it doesn't exist on first login)
+// In-memory store for users
+let users: AppUser[] = [];
+
+// Initial Admin User - This user will be available by default.
+const INITIAL_ADMIN_ID = 'initial-admin-user';
 const INITIAL_ADMIN_EMAIL = 'admin@example.com';
-const INITIAL_ADMIN_PASSWORD = 'password123'; 
+const INITIAL_ADMIN_PASSWORD = 'password123';
 const INITIAL_ADMIN_FIRSTNAME = 'Admin';
 const INITIAL_ADMIN_LASTNAME = 'User';
+
+// Function to ensure the initial admin exists in the in-memory store
+function ensureInitialAdminExists() {
+  if (!users.find(u => u.id === INITIAL_ADMIN_ID)) {
+    users.push({
+      id: INITIAL_ADMIN_ID,
+      firstName: INITIAL_ADMIN_FIRSTNAME,
+      lastName: INITIAL_ADMIN_LASTNAME,
+      email: INITIAL_ADMIN_EMAIL,
+      role: 'admin',
+      status: 'active',
+      password: INITIAL_ADMIN_PASSWORD,
+    });
+    console.log(`Initial admin user ${INITIAL_ADMIN_EMAIL} (ID: ${INITIAL_ADMIN_ID}) created in-memory.`);
+  }
+}
+// Ensure admin exists when module is loaded (e.g., on server start)
+ensureInitialAdminExists();
 
 
 export async function login(data: LoginFormData): Promise<{ success: boolean; message: string }> {
   try {
+    ensureInitialAdminExists(); // Ensure admin is there on login attempt
     const validation = LoginSchema.safeParse(data);
     if (!validation.success) {
       return { success: false, message: 'Invalid input.' };
     }
 
     const { email, password } = validation.data;
-    let user = await getUserByEmail(email);
-
-    // Auto-create initial admin if it's the first login attempt for this user and they don't exist
-    if (!user && email === INITIAL_ADMIN_EMAIL && password === INITIAL_ADMIN_PASSWORD) {
-      console.log(`Admin user ${INITIAL_ADMIN_EMAIL} not found, creating...`);
-      const newAdminData: Omit<AppUser, 'id'> = {
-        firstName: INITIAL_ADMIN_FIRSTNAME,
-        lastName: INITIAL_ADMIN_LASTNAME,
-        email: INITIAL_ADMIN_EMAIL,
-        role: 'admin',
-        status: 'active',
-        password: INITIAL_ADMIN_PASSWORD, // Store plaintext password
-      };
-      const adminId = 'initial-admin-user'; // Fixed ID for the first admin
-      try {
-          user = await createUserWithId(adminId, newAdminData); 
-          console.log(`Admin user ${INITIAL_ADMIN_EMAIL} created with ID ${user.id}.`);
-      } catch (error) {
-          console.error("Error creating initial admin user:", error);
-          // This specific error is fine to return as is, or make more generic
-          return { success: false, message: "Error setting up initial admin account. Check server logs." };
-      }
-    }
-
+    const user = users.find(u => u.email === email);
 
     if (user && user.password === password && user.status === 'active') {
       await setUserSession({
@@ -74,16 +70,13 @@ export async function login(data: LoginFormData): Promise<{ success: boolean; me
       } else {
         redirect(EMPLOYEE_PROFILE_PATH);
       }
-      // redirect() throws an error, so this line is typically not reached.
-      // Included for logical completeness if redirect wasn't used.
       return { success: true, message: 'Logged in successfully.' };
     }
 
     return { success: false, message: 'Invalid email or password, or account inactive.' };
   } catch (error) {
-    // Catch any unexpected errors from getUserByEmail, setUserSession, etc.
     console.error("[Login Action Error]:", error);
-    return { success: false, message: "An unexpected server error occurred during login. Please try again or contact support." };
+    return { success: false, message: "An unexpected server error occurred during login." };
   }
 }
 
@@ -96,28 +89,20 @@ export async function register(data: RegisterFormData): Promise<{ success: boole
 
     const { firstName, lastName, email, password, role } = validation.data;
 
-    const existingUser = await getUserByEmail(email);
-    if (existingUser) {
+    if (users.find(u => u.email === email)) {
       return { success: false, message: 'User with this email already exists.' };
     }
 
-    const newUserDate: Omit<AppUser, 'id'> = {
+    const newUser: AppUser = {
+      id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Generate unique ID
       firstName,
       lastName,
       email,
       role,
       status: 'active', // New users are active by default
-      password, // Store password directly for demo
+      password,
     };
-    
-    let newUser;
-    try {
-      newUser = await createUser(newUserDate);
-    } catch (error) {
-      console.error("Error registering user (service call):", error);
-      return { success: false, message: "Failed to register user due to a database error."};
-    }
-
+    users.push(newUser);
 
     await setUserSession({
       id: newUser.id,
@@ -140,7 +125,6 @@ export async function register(data: RegisterFormData): Promise<{ success: boole
 }
 
 export async function logout(): Promise<void> {
-  // logout is simple, usually no major failure points that need a complex return
   await clearUserSession();
   redirect('/login');
 }
@@ -148,18 +132,15 @@ export async function logout(): Promise<void> {
 // --- Admin User Management Actions ---
 
 export async function getUsers(): Promise<AppUser[]> {
-  // This action fetches data, if it fails, the client component should handle the error.
-  // No form submission pattern here, so "unexpected response" is less likely.
   try {
-    const usersFromDb = await getAllUsers(); 
-    // Remove password before sending to client
-    return usersFromDb.map(u => {
-      const { password, ...userWithoutPassword } = u;
-      return userWithoutPassword as AppUser; // Ensure type consistency
-    });
+    // Return a copy to prevent direct mutation of the in-memory store
+    return JSON.parse(JSON.stringify(users.map(u => {
+      const { password, ...userWithoutPassword } = u; // Don't send password to client
+      return userWithoutPassword;
+    })));
   } catch (error) {
-    console.error("[GetUsers Action Error]: Failed to fetch users from service", error);
-    return []; // Return empty array on error
+    console.error("[GetUsers Action Error]:", error);
+    return [];
   }
 }
 
@@ -172,36 +153,28 @@ export async function addUserByAdmin(data: AdminAddUserFormData): Promise<{ succ
 
     const { firstName, lastName, email, password, role } = validation.data;
 
-    const existingUser = await getUserByEmail(email);
-    if (existingUser) {
+    if (users.find(u => u.email === email)) {
       return { success: false, message: 'User with this email already exists.' };
     }
 
-    const newUserPayload: Omit<AppUser, 'id'> = {
+    const newUser: AppUser = {
+      id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       firstName,
       lastName,
       email,
+      password,
       role,
       status: 'active',
-      password, // Storing plaintext password
     };
-
-    let createdUser;
-    try {
-      createdUser = await createUser(newUserPayload);
-    } catch (error) {
-      console.error("Error adding user by admin (service call):", error);
-      return { success: false, message: "Failed to add user due to a database error." };
-    }
+    users.push(newUser);
     
-    const { password: _, ...newUserClientSafe } = createdUser;
+    const { password: _, ...newUserClientSafe } = newUser;
     return { success: true, message: 'User added successfully.', user: newUserClientSafe };
   } catch (error) {
     console.error("[AddUserByAdmin Action Error]:", error);
     return { success: false, message: "An unexpected server error occurred while adding the user." };
   }
 }
-
 
 export async function adminUpdateUserDetails(userId: string, data: AdminEditUserFormData): Promise<{ success: boolean; message: string; user?: AppUser }> {
    try {
@@ -210,41 +183,30 @@ export async function adminUpdateUserDetails(userId: string, data: AdminEditUser
       return { success: false, message: 'Invalid input for updating user.' };
     }
 
-    const currentUser = await getUserById(userId);
-    if (!currentUser) {
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
       return { success: false, message: 'User not found.' };
     }
 
     const { firstName, lastName, email, role, status } = validation.data;
 
     // Ensure email uniqueness if changed
-    if (email && email !== currentUser.email) {
-      const existingUserWithEmail = await getUserByEmail(email);
-      if (existingUserWithEmail && existingUserWithEmail.id !== userId) {
+    if (email && email !== users[userIndex].email) {
+      if (users.some(u => u.email === email && u.id !== userId)) {
         return { success: false, message: 'Another user with this email already exists.' };
       }
     }
     
-    const updatePayload: Partial<Omit<AppUser, 'id' | 'password'>> = {
+    users[userIndex] = {
+      ...users[userIndex],
       firstName,
       lastName,
       email,
       role,
       status,
     };
-
-    let updatedUser;
-    try {
-      updatedUser = await adminUpdateUserService(userId, updatePayload);
-      if (!updatedUser) {
-          return { success: false, message: 'User not found after update attempt in service.' };
-      }
-    } catch (error) {
-      console.error("Error updating user details by admin (service call):", error);
-      return { success: false, message: "Failed to update user due to a database error." };
-    }
-
-    const { password: _, ...updatedUserClientSafe } = updatedUser;
+    
+    const { password: _, ...updatedUserClientSafe } = users[userIndex];
     return { success: true, message: 'User details updated.', user: updatedUserClientSafe };
   } catch (error) {
     console.error("[AdminUpdateUserDetails Action Error]:", error);

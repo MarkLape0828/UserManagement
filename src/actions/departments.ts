@@ -2,51 +2,83 @@
 'use server';
 
 import type { Department, AddDepartmentFormData, EditDepartmentFormData } from '@/lib/schemas';
-import { getAllDepartments as getAllDepartmentsService, createDepartment as createDepartmentService, updateExistingDepartment as updateExistingDepartmentService } from '@/services/departmentService';
+
+// IMPORTANT: Data Persistence
+// This version uses an IN-MEMORY array for departments. Data will be RESET on server restart.
+let departmentsStore: Department[] = []; // Initialize as empty
 
 export async function getDepartments(): Promise<Department[]> {
   try {
-    return await getAllDepartmentsService();
+    // Return a deep copy to prevent direct mutation of the in-memory store from client-side expectations
+    // and to ensure serializability if Date objects are used.
+    return JSON.parse(JSON.stringify(departmentsStore));
   } catch (error) {
-    console.error("[GetDepartments Action] Error fetching departments from service:", error);
+    console.error("[GetDepartments Action] Error fetching departments:", error);
     return []; 
   }
 }
 
 export async function addDepartment(data: AddDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
   try {
-    // Schema validation for AddDepartmentFormData can be added here if needed,
-    // though it's typically handled by the form. For server actions, explicit validation is good.
-    // For now, assuming data is valid as per form's Zod schema.
-
-    const newDepartment = await createDepartmentService(data);
-    if (!newDepartment) {
-        // This condition implies the service layer determined a conflict (e.g., name exists)
-        return { success: false, message: 'Department with this name already exists or creation failed at service level.' };
+    const existingDepartment = departmentsStore.find(
+      (dept) => dept.name.toLowerCase() === data.name.toLowerCase()
+    );
+    if (existingDepartment) {
+      return { success: false, message: 'Department with this name already exists.' };
     }
-    return { success: true, message: 'Department added successfully.', department: newDepartment };
+
+    const newDepartment: Department = {
+      id: `dept_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      name: data.name,
+      nameLower: data.name.toLowerCase(),
+      status: 'active', // New departments are active by default
+      // createdAt and updatedAt can be added here if needed for in-memory version
+      // createdAt: new Date().toISOString(),
+      // updatedAt: new Date().toISOString(),
+    };
+    departmentsStore.push(newDepartment);
+    return { success: true, message: 'Department added successfully.', department: JSON.parse(JSON.stringify(newDepartment)) };
   } catch (error) {
     console.error("[AddDepartment Action] Error adding department:", error);
-    return { success: false, message: 'Failed to add department due to a server error. Please try again.' };
+    return { success: false, message: 'Failed to add department due to a server error.' };
   }
 }
 
 export async function updateDepartment(departmentId: string, data: EditDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
   try {
-    // Schema validation for EditDepartmentFormData can be added here if needed.
-
-    const updatedDepartment = await updateExistingDepartmentService(departmentId, data);
-     if (!updatedDepartment) {
-        // This can happen if the new name conflicts with an existing one, or department not found
-        // The service layer should ideally provide more specific reasons if possible.
-        // For now, we assume service returning null means conflict or not found.
-        // A more detailed check might involve re-fetching to see if it's a name conflict.
-        return { success: false, message: 'Department not found, or update failed (e.g., name conflict). Check data and try again.' };
+    const deptIndex = departmentsStore.findIndex(d => d.id === departmentId);
+    if (deptIndex === -1) {
+      return { success: false, message: 'Department not found.' };
     }
-    return { success: true, message: 'Department updated successfully.', department: updatedDepartment };
-  } catch (error)
- {
+
+    if (data.name) {
+      const nameLower = data.name.toLowerCase();
+      if (departmentsStore.some(d => d.nameLower === nameLower && d.id !== departmentId)) {
+        return { success: false, message: 'Another department with this name already exists.' };
+      }
+      departmentsStore[deptIndex].name = data.name;
+      departmentsStore[deptIndex].nameLower = nameLower;
+    }
+
+    if (data.status) {
+      departmentsStore[deptIndex].status = data.status;
+    }
+    // departmentsStore[deptIndex].updatedAt = new Date().toISOString();
+    
+    return { success: true, message: 'Department updated successfully.', department: JSON.parse(JSON.stringify(departmentsStore[deptIndex])) };
+  } catch (error) {
     console.error("[UpdateDepartment Action] Error updating department:", error);
-    return { success: false, message: 'Failed to update department due to a server error. Please try again.' };
+    return { success: false, message: 'Failed to update department due to a server error.' };
+  }
+}
+
+// Helper function that might be used by other actions (e.g., employees)
+export async function getDepartmentById(departmentId: string): Promise<Department | null> {
+  try {
+    const department = departmentsStore.find(d => d.id === departmentId);
+    return department ? JSON.parse(JSON.stringify(department)) : null;
+  } catch (error) {
+    console.error(`[GetDepartmentById Action] Error fetching department ${departmentId}:`, error);
+    return null;
   }
 }
