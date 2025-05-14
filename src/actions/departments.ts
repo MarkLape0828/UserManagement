@@ -6,28 +6,22 @@ import type { Department, AddDepartmentFormData, EditDepartmentFormData } from '
 
 // Renamed to avoid conflict if 'departments' is used as a parameter or local var elsewhere.
 let departmentsStore: Department[] = [
-  { id: 'dept_1', name: 'Human Resources', status: 'active', employeeCount: 0 },
-  { id: 'dept_2', name: 'Engineering', status: 'active', employeeCount: 0 },
-  { id: 'dept_3', name: 'Marketing', status: 'inactive', employeeCount: 0 },
+  { id: 'dept_1', name: 'Human Resources', status: 'active' },
+  { id: 'dept_2', name: 'Engineering', status: 'active' },
+  { id: 'dept_3', name: 'Marketing', status: 'inactive' },
 ];
 
 export async function getDepartments(): Promise<Department[]> {
-  // console.log("Server Action: getDepartments called. Current store state:", JSON.stringify(departmentsStore));
   try {
-    // Ensure we're working with a copy and it's serializable
-    // Handle if departmentsStore is null or undefined, though it's initialized as an array.
-    const currentData = departmentsStore || [];
+    // Ensure departmentsStore is treated as an array, even if it were unexpectedly null/undefined
+    const currentData = Array.isArray(departmentsStore) ? departmentsStore : [];
+    // Return a deep copy to prevent direct mutation of the store and ensure serializability
     const dataToReturn = JSON.parse(JSON.stringify(currentData));
-    
-    if (!Array.isArray(dataToReturn)) {
-      console.error("Server Action: getDepartments - dataToReturn is not an array after processing:", dataToReturn);
-      return []; // Fallback to empty array
-    }
-    // console.log("Server Action: getDepartments returning (a copy):", JSON.stringify(dataToReturn));
-    return dataToReturn;
-  } catch (e) {
-    console.error("Server Action: getDepartments encountered an error during processing:", e);
-    return []; // Always return an array on error
+    // Final check to ensure the parsed data is an array
+    return Array.isArray(dataToReturn) ? dataToReturn : [];
+  } catch (error) {
+    console.error("Error in getDepartments processing:", error);
+    return []; // Fallback to empty array on any error
   }
 }
 
@@ -42,7 +36,6 @@ export async function addDepartment(data: AddDepartmentFormData): Promise<{ succ
     id: `dept_${Date.now()}_${departmentsStore.length + 1}`,
     name,
     status: 'active', 
-    employeeCount: 0,
   };
   departmentsStore.push(newDepartment);
   // Return a serializable copy

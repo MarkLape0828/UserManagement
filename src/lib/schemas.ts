@@ -43,7 +43,7 @@ export const DepartmentSchema = z.object({
   id: z.string(),
   name: z.string().min(1, { message: 'Department name is required.' }).max(100, { message: 'Department name cannot exceed 100 characters.' }),
   status: z.enum(['active', 'inactive']),
-  employeeCount: z.number().optional(), // Optional, as it's a placeholder for now
+  // employeeCount removed
 });
 export type Department = z.infer<typeof DepartmentSchema>;
 

@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Edit, PlusCircle, RefreshCw, Users, Building, ShieldX, ShieldCheck } from 'lucide-react';
+import { Edit, PlusCircle, RefreshCw, Building, ShieldX, ShieldCheck } from 'lucide-react'; // Users icon removed
 import React, { useState, useEffect } from 'react';
 import { AddDepartmentDialog } from './add-department-dialog';
 import { EditDepartmentDialog } from './edit-department-dialog';
@@ -31,22 +31,18 @@ export function DepartmentManagementTable() {
     setIsLoading(true);
     try {
       const fetchedDepartmentsData = await getDepartments();
-      // Log what is actually received from the server action
-      console.log('[Client] fetchDepartments received:', fetchedDepartmentsData, 'IsArray:', Array.isArray(fetchedDepartmentsData));
-
+      
       if (Array.isArray(fetchedDepartmentsData)) {
         setDepartments(fetchedDepartmentsData.sort((a, b) => a.name.localeCompare(b.name)));
       } else {
-        // This block indicates the server action did not return an array as expected
         console.error("[Client] fetchDepartments: getDepartments did not return a valid array. Value received:", fetchedDepartmentsData);
-        setDepartments([]); // Default to empty array to prevent further errors
+        setDepartments([]); 
         toast({ title: 'Error', description: 'Failed to fetch departments or data is invalid.', variant: 'destructive' });
       }
     } catch (error) {
-      // This catch block handles errors during the await getDepartments() call itself (e.g., network errors, unhandled server exceptions)
       toast({ title: 'Error', description: 'An error occurred while fetching departments.', variant: 'destructive' });
       console.error("[Client] fetchDepartments: Exception caught while fetching departments:", error);
-      setDepartments([]); // Ensure departments is an empty array on error
+      setDepartments([]); 
     } finally {
       setIsLoading(false);
     }
@@ -98,7 +94,7 @@ export function DepartmentManagementTable() {
             <TableRow>
               <TableHead>Department Name</TableHead>
               <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-center">Employees</TableHead>
+              {/* Employee count column removed */}
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -115,12 +111,7 @@ export function DepartmentManagementTable() {
                     {dept.status.charAt(0).toUpperCase() + dept.status.slice(1)}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-center">
-                  <div className="inline-flex items-center">
-                    <Users className="mr-1 h-4 w-4 text-muted-foreground" />
-                    {dept.employeeCount ?? 0}
-                  </div>
-                </TableCell>
+                {/* Employee count cell removed */}
                 <TableCell className="text-right space-x-1">
                   <Button
                     variant="ghost"
@@ -134,7 +125,8 @@ export function DepartmentManagementTable() {
               </TableRow>
             )) : (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                {/* Adjusted colSpan from 4 to 3 */}
+                <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
                   No departments found. Click "Add Department" to create one.
                 </TableCell>
               </TableRow>
