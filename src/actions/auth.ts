@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -10,6 +11,8 @@ import { ADMIN_DASHBOARD_PATH, EMPLOYEE_PROFILE_PATH } from '@/lib/constants';
 const users: UserSession[] = [
   { id: '1', name: 'Admin User', email: 'admin@example.com', role: 'admin' },
   { id: '2', name: 'Employee User', email: 'employee@example.com', role: 'employee' },
+  { id: '3', name: 'User', email: 'user@example.com', role: 'employee' }, // Added new employee
+  { id: '4', name: 'Admin', email: 'admin@example.com', role: 'admin' }, // Added new admin
 ];
 
 export async function login(data: LoginFormData): Promise<{ success: boolean; message: string }> {
@@ -24,7 +27,20 @@ export async function login(data: LoginFormData): Promise<{ success: boolean; me
   const user = users.find((u) => u.email === email);
 
   // Simulate password check (in a real app, use hashed passwords)
-  if (user && password === 'password123') { // Insecure, for demo only!
+  // For the new users, we'll use their specified passwords.
+  let passwordMatch = false;
+  if (user) {
+    if (user.email === 'user@example.com' && password === 'userpass') {
+      passwordMatch = true;
+    } else if (user.email === 'admin@example.com' && password === 'amdminpass' && user.id === '4') { // Ensure we check the new admin
+      passwordMatch = true;
+    } else if (password === 'password123') { // Fallback for existing users
+      passwordMatch = true;
+    }
+  }
+
+
+  if (user && passwordMatch) { 
     await setUserSession(user);
     if (user.role === 'admin') {
       redirect(ADMIN_DASHBOARD_PATH);
@@ -54,7 +70,7 @@ export async function register(data: RegisterFormData): Promise<{ success: boole
 
   // Simulate creating new user
   const newUser: UserSession = {
-    id: String(users.length + 1),
+    id: String(users.length + 1), // This will now be 5 if both new users are added before registration
     name,
     email,
     role,
@@ -74,3 +90,4 @@ export async function logout(): Promise<void> {
   await clearUserSession();
   redirect('/login');
 }
+
