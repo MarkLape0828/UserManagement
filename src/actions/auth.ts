@@ -3,54 +3,29 @@
 
 import { z } from 'zod';
 import { LoginSchema, RegisterSchema, type LoginFormData, type RegisterFormData, AdminAddUserSchema, type AdminAddUserFormData, AdminEditUserSchema, type AdminEditUserFormData } from '@/lib/schemas';
-import { setUserSession, clearUserSession, type UserSession } from '@/lib/auth';
+import { setUserSession, clearUserSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { ADMIN_DASHBOARD_PATH, EMPLOYEE_PROFILE_PATH } from '@/lib/constants';
 import { auth as firebaseAuth } from '@/lib/firebase'; // Import Firebase Auth instance
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { 
+  getUserProfileById, 
+  getUserProfileByEmail, 
+  createUserProfile, 
+  updateUserProfile, 
+  getAllUserProfiles,
+  type AppUserProfile 
+} from '@/services/userService'; // Updated imports
 
-// IMPORTANT: Data Persistence & Password Handling
-// This version uses an IN-MEMORY array for storing user profile details (name, role, status).
-// Passwords are now managed by Firebase Authentication.
-// User profile data (first name, last name, role, status) will be RESET on server restart.
-export interface AppUser extends Omit<UserSession, 'firstName' | 'lastName'> {
-  firstName: string;
-  lastName: string;
-  status: 'active' | 'inactive';
-  // Password is no longer stored here
-}
+// In-memory user store is REMOVED. Data will be in Firestore.
 
-// In-memory store for user profile details
-let users: AppUser[] = [];
-
-// Initial Admin User - Profile details.
-// The actual Firebase Auth user (admin@example.com, password123) MUST BE CREATED MANUALLY in the Firebase Console.
-const INITIAL_ADMIN_ID = 'initial-admin-user';
 const INITIAL_ADMIN_EMAIL = 'admin@example.com';
 const INITIAL_ADMIN_FIRSTNAME = 'Admin';
 const INITIAL_ADMIN_LASTNAME = 'User';
 
-// Function to ensure the initial admin's profile exists in the in-memory store
-function ensureInitialAdminProfileExists() {
-  if (!users.find(u => u.id === INITIAL_ADMIN_ID)) {
-    users.push({
-      id: INITIAL_ADMIN_ID,
-      firstName: INITIAL_ADMIN_FIRSTNAME,
-      lastName: INITIAL_ADMIN_LASTNAME,
-      email: INITIAL_ADMIN_EMAIL,
-      role: 'admin',
-      status: 'active',
-    });
-    console.log(`Initial admin user profile for ${INITIAL_ADMIN_EMAIL} (ID: ${INITIAL_ADMIN_ID}) created in-memory. Ensure this user exists in Firebase Authentication.`);
-  }
-}
-// Ensure admin profile exists when module is loaded
-ensureInitialAdminProfileExists();
-
 
 export async function login(data: LoginFormData): Promise<{ success: boolean; message: string }> {
   try {
-    ensureInitialAdminProfileExists(); // Ensure local profile record for admin exists
     const validation = LoginSchema.safeParse(data);
     if (!validation.success) {
       return { success: false, message: 'Invalid input.' };
@@ -69,36 +44,60 @@ export async function login(data: LoginFormData): Promise<{ success: boolean; me
       firebaseUserCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
     } catch (error: any) {
       console.error("[Login Action Error - Firebase Auth]:", error.code, error.message);
-      // Map Firebase error codes to user-friendly messages
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         return { success: false, message: 'Invalid email or password.' };
       }
       return { success: false, message: 'Failed to authenticate with Firebase.' };
     }
+    
+    const firebaseUser = firebaseUserCredential.user;
 
-    // Step 2: Find user profile in our in-memory store
-    const appUser = users.find(u => u.email === email);
+    // Step 2: Fetch user profile from Firestore
+    let appUserProfile = await getUserProfileById(firebaseUser.uid);
 
-    if (appUser && appUser.status === 'active') {
+    // Special handling for initial admin: if profile doesn't exist, create it.
+    if (!appUserProfile && email === INITIAL_ADMIN_EMAIL) {
+      console.log(`Profile for initial admin ${email} not found in Firestore. Creating...`);
+      try {
+        appUserProfile = await createUserProfile(firebaseUser.uid, {
+          firstName: INITIAL_ADMIN_FIRSTNAME,
+          lastName: INITIAL_ADMIN_LASTNAME,
+          email: firebaseUser.email!,
+          role: 'admin',
+          status: 'active',
+        });
+        console.log(`Profile for initial admin ${email} created in Firestore.`);
+      } catch (profileError) {
+        console.error(`Failed to create Firestore profile for initial admin ${email}:`, profileError);
+        // Log out the Firebase user as we couldn't set up their profile
+        if (firebaseAuth.currentUser) await firebaseAuth.signOut();
+        return { success: false, message: 'Admin setup failed. Could not create profile.' };
+      }
+    }
+
+    if (appUserProfile && appUserProfile.status === 'active') {
       await setUserSession({
-        id: appUser.id, // Using our internal ID for session
-        firstName: appUser.firstName,
-        lastName: appUser.lastName,
-        email: appUser.email, // email from our record, should match Firebase
-        role: appUser.role,
+        id: appUserProfile.uid, // Use Firestore UID for session ID
+        firstName: appUserProfile.firstName,
+        lastName: appUserProfile.lastName,
+        email: appUserProfile.email,
+        role: appUserProfile.role,
       });
-      if (appUser.role === 'admin') {
+      if (appUserProfile.role === 'admin') {
         redirect(ADMIN_DASHBOARD_PATH);
       } else {
         redirect(EMPLOYEE_PROFILE_PATH);
       }
       return { success: true, message: 'Logged in successfully.' };
-    } else if (appUser && appUser.status !== 'active') {
+    } else if (appUserProfile && appUserProfile.status !== 'active') {
+      // Log out the Firebase user if their app profile is inactive
+      if (firebaseAuth.currentUser) await firebaseAuth.signOut();
       return { success: false, message: 'Account is inactive.' };
     } else {
-      // Authenticated with Firebase, but no local profile found (should not happen if register/addUserByAdmin is correct)
-      console.warn(`User ${email} authenticated with Firebase but no local profile found.`);
-      return { success: false, message: 'User profile not found after authentication.' };
+      // Authenticated with Firebase, but no app profile found (and not the initial admin case)
+      console.warn(`User ${email} authenticated with Firebase but no app profile found in Firestore.`);
+      if (firebaseAuth.currentUser) await firebaseAuth.signOut();
+      return { success: false, message: 'User application profile not found.' };
     }
 
   } catch (error) {
@@ -121,8 +120,9 @@ export async function register(data: RegisterFormData): Promise<{ success: boole
       return { success: false, message: "Authentication service is unavailable." };
     }
 
-    // Step 1: Check if user already exists in our in-memory store by email
-    if (users.find(u => u.email === email)) {
+    // Step 1: Check if user profile already exists in Firestore by email (optional, Firebase handles email uniqueness)
+    const existingProfile = await getUserProfileByEmail(email);
+    if (existingProfile) {
       return { success: false, message: 'User with this email already has a profile.' };
     }
 
@@ -133,33 +133,42 @@ export async function register(data: RegisterFormData): Promise<{ success: boole
     } catch (error: any) {
       console.error("[Register Action Error - Firebase Auth]:", error.code, error.message);
       if (error.code === 'auth/email-already-in-use') {
-        return { success: false, message: 'This email is already registered with Firebase.' };
+        return { success: false, message: 'This email is already registered.' };
       }
-      return { success: false, message: 'Failed to create user account with Firebase.' };
+      return { success: false, message: 'Failed to create Firebase user account.' };
     }
     
     const firebaseUser = firebaseUserCredential.user;
 
-    // Step 3: Create user profile in our in-memory store
-    const newAppUser: AppUser = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, // Our internal ID
-      firstName,
-      lastName,
-      email: firebaseUser.email!, // Use email from Firebase user
-      role,
-      status: 'active', // New users are active by default
-    };
-    users.push(newAppUser);
+    // Step 3: Create user profile in Firestore
+    let newAppUserProfile;
+    try {
+      newAppUserProfile = await createUserProfile(firebaseUser.uid, {
+        firstName,
+        lastName,
+        email: firebaseUser.email!,
+        role,
+        status: 'active',
+      });
+    } catch (profileError) {
+      console.error(`Failed to create Firestore profile for new user ${email}:`, profileError);
+      // Potentially delete the Firebase Auth user if profile creation fails (complex, needs careful handling)
+      return { success: false, message: 'Firebase account created, but failed to create application profile.' };
+    }
+    
+    if (!newAppUserProfile) {
+        return { success: false, message: 'Failed to create application profile after Firebase registration.' };
+    }
 
     await setUserSession({
-      id: newAppUser.id,
-      firstName: newAppUser.firstName,
-      lastName: newAppUser.lastName,
-      email: newAppUser.email,
-      role: newAppUser.role,
+      id: newAppUserProfile.uid,
+      firstName: newAppUserProfile.firstName,
+      lastName: newAppUserProfile.lastName,
+      email: newAppUserProfile.email,
+      role: newAppUserProfile.role,
     });
 
-    if (newAppUser.role === 'admin') {
+    if (newAppUserProfile.role === 'admin') {
       redirect(ADMIN_DASHBOARD_PATH);
     } else {
       redirect(EMPLOYEE_PROFILE_PATH);
@@ -172,25 +181,31 @@ export async function register(data: RegisterFormData): Promise<{ success: boole
 }
 
 export async function logout(): Promise<void> {
-  // For Firebase Auth, you might also want to call firebaseAuth.signOut() if managing client-side state
-  // but since we manage session via cookie, clearing cookie is primary for server.
+  try {
+    if (firebaseAuth && firebaseAuth.currentUser) {
+      await firebaseAuth.signOut();
+    }
+  } catch (error) {
+    console.error("Error signing out from Firebase:", error);
+    // Continue to clear cookie session even if Firebase signout fails
+  }
   await clearUserSession();
   redirect('/login');
 }
 
 // --- Admin User Management Actions ---
 
-export async function getUsers(): Promise<AppUser[]> {
+// Returns AppUserProfile[] which includes uid, createdAt, updatedAt
+export async function getUsers(): Promise<AppUserProfile[]> {
   try {
-    // Return a copy to prevent direct mutation of the in-memory store
-    return JSON.parse(JSON.stringify(users));
+    return await getAllUserProfiles();
   } catch (error) {
     console.error("[GetUsers Action Error]:", error);
-    return [];
+    return []; // Return empty array on error
   }
 }
 
-export async function addUserByAdmin(data: AdminAddUserFormData): Promise<{ success: boolean; message: string; user?: AppUser }> {
+export async function addUserByAdmin(data: AdminAddUserFormData): Promise<{ success: boolean; message: string; user?: AppUserProfile }> {
   try {
     const validation = AdminAddUserSchema.safeParse(data);
     if (!validation.success) {
@@ -204,77 +219,120 @@ export async function addUserByAdmin(data: AdminAddUserFormData): Promise<{ succ
       return { success: false, message: "Authentication service is unavailable." };
     }
 
-    if (users.find(u => u.email === email)) {
-      return { success: false, message: 'User with this email already has a profile in the local store.' };
+    const existingProfile = await getUserProfileByEmail(email);
+    if (existingProfile) {
+      return { success: false, message: 'User with this email already has a profile.' };
     }
     
     // Step 1: Create user in Firebase Authentication
+    // We need to temporarily sign out any current admin to create a new user, then sign admin back in. This is a Firebase client SDK limitation.
+    // Ideally, admin operations use Firebase Admin SDK on a backend.
+    // For this client-side approach, it's complex. A simpler approach: admin creates user, tells them to set password via "Forgot Password" flow.
+    // Or, for now, we'll assume this is for a system where admin setting initial password is okay.
+    // THIS IS A SIMPLIFICATION AND HAS SECURITY IMPLICATIONS IF NOT HANDLED CAREFULLY.
     let firebaseUserCredential;
     try {
+      // This operation (createUserWithEmailAndPassword) signs in the new user.
+      // This is problematic if an admin is performing this.
+      // For true admin "add user", Firebase Admin SDK is required.
+      // Let's proceed with the caveat that this isn't ideal for multi-admin scenarios from client.
       firebaseUserCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
     } catch (error: any) {
       console.error("[AddUserByAdmin Action Error - Firebase Auth]:", error.code, error.message);
       if (error.code === 'auth/email-already-in-use') {
         return { success: false, message: 'This email is already registered with Firebase.' };
       }
-      return { success: false, message: 'Failed to create user account with Firebase.' };
+      // It's possible the error is due to admin already being signed in.
+      // This part is tricky with client SDK.
+      return { success: false, message: 'Failed to create Firebase user account. Ensure you are not logged in or try again.' };
     }
     const firebaseUser = firebaseUserCredential.user;
 
-    // Step 2: Create user profile in our in-memory store
-    const newAppUser: AppUser = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      firstName,
-      lastName,
-      email: firebaseUser.email!,
-      role,
-      status: 'active',
-    };
-    users.push(newAppUser);
+    // Step 2: Create user profile in Firestore
+    let newAppUserProfile;
+    try {
+        newAppUserProfile = await createUserProfile(firebaseUser.uid, {
+        firstName,
+        lastName,
+        email: firebaseUser.email!,
+        role,
+        status: 'active',
+      });
+    } catch (profileError) {
+        console.error(`Failed to create Firestore profile for user ${email} added by admin:`, profileError);
+        // Consider cleaning up the Firebase Auth user here if profile creation fails.
+        return { success: false, message: 'Firebase account created, but failed to create application profile.' };
+    }
+
+    // After creating the user, the new user is now signed in via Firebase.
+    // The admin needs to be signed back in. This flow is problematic.
+    // For simplicity, we'll assume the admin has to log back in after adding a user if they want to continue admin tasks.
+    // OR we don't sign out the current user here but this isn't standard createUserWithEmailAndPassword behavior.
+    // For the prototype, we'll let the new user be signed in and the admin will effectively be "logged out" of Firebase Auth.
+    // The cookie session of the admin remains until they explicitly log out via UI or it expires.
+
+    if (!newAppUserProfile) {
+      return { success: false, message: 'Failed to create application profile for user added by admin.' };
+    }
     
-    return { success: true, message: 'User added successfully. Firebase account created and local profile stored.', user: newAppUser };
+    return { success: true, message: 'User added successfully. Firebase account created and Firestore profile stored.', user: newAppUserProfile };
   } catch (error) {
     console.error("[AddUserByAdmin Action Error - General]:", error);
     return { success: false, message: "An unexpected server error occurred while adding the user." };
   }
 }
 
-export async function adminUpdateUserDetails(userId: string, data: AdminEditUserFormData): Promise<{ success: boolean; message: string; user?: AppUser }> {
+export async function adminUpdateUserDetails(userId: string, data: AdminEditUserFormData): Promise<{ success: boolean; message: string; user?: AppUserProfile }> {
    try {
     const validation = AdminEditUserSchema.safeParse(data);
     if (!validation.success) {
       return { success: false, message: 'Invalid input for updating user.' };
     }
 
-    const userIndex = users.findIndex(u => u.id === userId);
-    if (userIndex === -1) {
-      return { success: false, message: 'User profile not found in local store.' };
+    // userId here is the Firebase UID.
+    const existingProfile = await getUserProfileById(userId);
+    if (!existingProfile) {
+      return { success: false, message: 'User profile not found in Firestore.' };
     }
 
     const { firstName, lastName, email, role, status } = validation.data;
-
-    // Note: Changing email for a Firebase Auth user programmatically is complex and often requires re-authentication or Admin SDK.
-    // This update only affects the local in-memory profile.
-    // If email is changed here, it will mismatch the Firebase Auth email unless also changed there (manually or via Admin SDK).
-    if (email && email !== users[userIndex].email) {
-      if (users.some(u => u.email === email && u.id !== userId)) {
-        return { success: false, message: 'Another user profile with this email already exists in the local store.' };
+    
+    // Check for email conflict if email is being changed
+    if (email && email !== existingProfile.email) {
+      const conflictingProfile = await getUserProfileByEmail(email);
+      if (conflictingProfile && conflictingProfile.uid !== userId) {
+        return { success: false, message: 'Another user profile with this email already exists.' };
       }
-      console.warn(`Email for user ${userId} changed in local store to ${email}, but Firebase Auth email remains ${users[userIndex].email}. Manual Firebase update needed if primary email should change.`);
+      // Note: Changing email in Firestore profile does NOT change it in Firebase Auth.
+      // This requires Firebase Admin SDK or user re-authentication.
+      // For this prototype, we'll update Firestore only and log a warning.
+      console.warn(`Email for user ${userId} changed in Firestore to ${email}. Firebase Auth email remains ${existingProfile.email}. This requires separate Firebase Auth update.`);
     }
     
-    users[userIndex] = {
-      ...users[userIndex],
+    const updatedProfile = await updateUserProfile(userId, {
       firstName,
       lastName,
-      email, // email from form
+      email, // Email from form
       role,
       status,
-    };
+    });
     
-    return { success: true, message: 'User local profile details updated.', user: users[userIndex] };
+    if (!updatedProfile) {
+        return { success: false, message: 'Failed to update user profile in Firestore.' };
+    }
+    
+    return { success: true, message: 'User Firestore profile details updated.', user: updatedProfile };
   } catch (error) {
     console.error("[AdminUpdateUserDetails Action Error]:", error);
     return { success: false, message: "An unexpected server error occurred while updating user details." };
   }
 }
+
+// Helper to map AppUserProfile to the old AppUser structure if needed by client, for smoother transition.
+// However, it's better for clients to adapt to AppUserProfile.
+// For UserManagementTable, it expects AppUser with 'id'.
+// AppUserProfile has 'uid'.
+// So, UserManagementTable will need to be updated to use `user.uid` as key and for passing to edit.
+// And it will expect AppUserProfile[] from getUsers().
+// The fields (firstName, lastName, email, role, status) are compatible.
+    
