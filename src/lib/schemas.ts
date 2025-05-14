@@ -24,3 +24,14 @@ export const AdminAddUserSchema = z.object({
 });
 
 export type AdminAddUserFormData = z.infer<typeof AdminAddUserSchema>;
+
+export const AdminEditUserSchema = z.object({
+  // ID is not part of the form but needed for the action
+  // id: z.string(), 
+  name: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
+  email: z.string().email({ message: 'Invalid email address.' }),
+  role: z.enum(['employee', 'admin'], { required_error: 'Role is required.' }),
+  // Password is not directly edited here for simplicity, status is handled by toggle
+});
+
+export type AdminEditUserFormData = z.infer<typeof AdminEditUserSchema>;

@@ -2,7 +2,7 @@
 'use server';
 
 import { z } from 'zod';
-import { LoginSchema, RegisterSchema, type LoginFormData, type RegisterFormData, type AdminAddUserFormData } from '@/lib/schemas';
+import { LoginSchema, RegisterSchema, type LoginFormData, type RegisterFormData, type AdminAddUserFormData, AdminEditUserSchema, type AdminEditUserFormData } from '@/lib/schemas';
 import { setUserSession, clearUserSession, type UserSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { ADMIN_DASHBOARD_PATH, EMPLOYEE_PROFILE_PATH } from '@/lib/constants';
@@ -18,7 +18,7 @@ const users: AppUser[] = [
   { id: '1', name: 'Admin User', email: 'admin@example.com', role: 'admin', status: 'active', password: 'password123' },
   { id: '2', name: 'Employee User', email: 'employee@example.com', role: 'employee', status: 'active', password: 'password123' },
   { id: '3', name: 'User One', email: 'user@example.com', role: 'employee', status: 'active', password: 'userpass' },
-  { id: '4', name: 'Admin Two', email: 'admin2@example.com', role: 'admin', status: 'active', password: 'amdminpass' }, // Changed email to be unique for clarity
+  { id: '4', name: 'Admin Two', email: 'admin2@example.com', role: 'admin', status: 'active', password: 'amdminpass' }, 
 ];
 
 export async function login(data: LoginFormData): Promise<{ success: boolean; message: string }> {
@@ -102,30 +102,28 @@ export async function getUsers(): Promise<AppUser[]> {
 }
 
 export async function addUserByAdmin(data: AdminAddUserFormData): Promise<{ success: boolean; message: string; user?: AppUser }> {
-  // Note: Schema validation should happen in the form component calling this action.
-  // This is an example of a server-side check.
-  // const validation = AdminAddUserSchema.safeParse(data); // Already done client side
-  // if (!validation.success) {
-  //   return { success: false, message: 'Invalid input on server.' };
-  // }
+  const validation = AdminAddUserSchema.safeParse(data);
+  if (!validation.success) {
+    // This case should ideally be caught by client-side validation, but good to have a server check.
+    return { success: false, message: 'Invalid input provided for adding user.' };
+  }
   
-  const { name, email, password, role } = data;
+  const { name, email, password, role } = validation.data;
 
   if (users.some((u) => u.email === email)) {
     return { success: false, message: 'User with this email already exists.' };
   }
 
   const newUser: AppUser = {
-    id: String(users.length + 1 + Date.now()), // More unique ID
+    id: String(users.length + 1 + Date.now()), 
     name,
     email,
     role,
-    status: 'active', // New users added by admin are active by default
-    password, // Store password directly for demo
+    status: 'active', 
+    password, 
   };
   users.push(newUser);
 
-  // Don't send password back
   const { password: _, ...newUserClientSafe } = newUser;
 
   return { success: true, message: 'User added successfully.', user: newUserClientSafe };
@@ -140,22 +138,34 @@ export async function adminUpdateUserStatus(userId: string, newStatus: 'active' 
   return { success: true, message: `User status updated to ${newStatus}.` };
 }
 
-// Placeholder for future implementation
-export async function adminUpdateUserDetails(userId: string, data: Partial<Omit<AppUser, 'id' | 'password'>>): Promise<{ success: boolean; message: string; user?: AppUser }> {
-   const userIndex = users.findIndex(u => u.id === userId);
-  if (userIndex === -1) {
-    return { success: false, message: 'User not found.' };
-  }
+export async function adminUpdateUserDetails(userId: string, data: AdminEditUserFormData): Promise<{ success: boolean; message: string; user?: AppUser }> {
+   const validation = AdminEditUserSchema.safeParse(data);
+   if (!validation.success) {
+     return { success: false, message: 'Invalid input for updating user.' };
+   }
 
-  // Ensure email uniqueness if changed
-  if (data.email && data.email !== users[userIndex].email) {
-    if (users.some(u => u.email === data.email && u.id !== userId)) {
-      return { success: false, message: 'Another user with this email already exists.' };
-    }
-  }
-  
-  users[userIndex] = { ...users[userIndex], ...data };
-  
-  const { password, ...updatedUserClientSafe } = users[userIndex];
-  return { success: true, message: 'User details updated.', user: updatedUserClientSafe };
+   const userIndex = users.findIndex(u => u.id === userId);
+   if (userIndex === -1) {
+     return { success: false, message: 'User not found.' };
+   }
+ 
+   const { name, email, role } = validation.data;
+ 
+   // Ensure email uniqueness if changed
+   if (email && email !== users[userIndex].email) {
+     if (users.some(u => u.email === email && u.id !== userId)) {
+       return { success: false, message: 'Another user with this email already exists.' };
+     }
+   }
+   
+   users[userIndex] = { 
+     ...users[userIndex], 
+     name: name ?? users[userIndex].name,
+     email: email ?? users[userIndex].email,
+     role: role ?? users[userIndex].role,
+     // status and password are not changed here
+   };
+   
+   const { password, ...updatedUserClientSafe } = users[userIndex];
+   return { success: true, message: 'User details updated.', user: updatedUserClientSafe };
 }
