@@ -57,3 +57,57 @@ export const EditDepartmentSchema = z.object({
   status: z.enum(['active', 'inactive'], { required_error: 'Status is required.' }),
 });
 export type EditDepartmentFormData = z.infer<typeof EditDepartmentSchema>;
+
+
+// Employee Schemas
+export const EmployeeStatusSchema = z.enum(['active', 'inactive', 'on_leave']);
+export type EmployeeStatus = z.infer<typeof EmployeeStatusSchema>;
+
+export const EmployeeSchema = z.object({
+  id: z.string(), // Employee-specific ID, e.g., EMP001
+  userId: z.string(), // Links to AppUser.id
+  position: z.string().min(1, "Position is required.").max(100),
+  departmentId: z.string().min(1, "Department is required."),
+  hireDate: z.date({
+    required_error: "Hire date is required.",
+    invalid_type_error: "Invalid date format for hire date.",
+  }),
+  status: EmployeeStatusSchema,
+});
+export type Employee = z.infer<typeof EmployeeSchema>;
+
+export const AddEmployeeSchema = z.object({
+  userId: z.string().min(1, "User account is required."),
+  position: z.string().min(1, "Position is required.").max(100),
+  departmentId: z.string().min(1, "Department is required."),
+  hireDate: z.date({
+    required_error: "Hire date is required.",
+    invalid_type_error: "Invalid date format for hire date.",
+  }),
+  status: EmployeeStatusSchema.default('active'),
+});
+export type AddEmployeeFormData = z.infer<typeof AddEmployeeSchema>;
+
+export const EditEmployeeSchema = z.object({
+  // userId is not editable directly here as it links the employee record to a user account
+  position: z.string().min(1, "Position is required.").max(100),
+  departmentId: z.string().min(1, "Department is required."),
+  hireDate: z.date({
+    required_error: "Hire date is required.",
+    invalid_type_error: "Invalid date format for hire date.",
+  }),
+  status: EmployeeStatusSchema,
+});
+export type EditEmployeeFormData = z.infer<typeof EditEmployeeSchema>;
+
+
+// Audit Log Schema (for footprint)
+export const AuditLogEntrySchema = z.object({
+  id: z.string(),
+  employeeId: z.string(),
+  timestamp: z.string(), // ISO datetime string
+  action: z.string(), // e.g., "EMPLOYEE_CREATED", "DEPARTMENT_TRANSFER", "STATUS_CHANGE"
+  details: z.string(), // Could be a JSON string of { field, oldValue, newValue } or a descriptive message
+  changedByUserId: z.string(), // Admin user ID who made the change
+});
+export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
