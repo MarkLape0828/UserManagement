@@ -8,7 +8,7 @@ import { redirect } from 'next/navigation';
 import { ADMIN_DASHBOARD_PATH, EMPLOYEE_PROFILE_PATH } from '@/lib/constants';
 
 // Extended user type for internal management, UserSession is the shape for the cookie
-export interface AppUser extends Omit<UserSession, 'name'> { // Omit 'name' if it existed, ensure new fields are here
+export interface AppUser extends Omit<UserSession, 'firstName' | 'lastName'> { 
   firstName: string;
   lastName: string;
   status: 'active' | 'inactive';
@@ -16,7 +16,7 @@ export interface AppUser extends Omit<UserSession, 'name'> { // Omit 'name' if i
 }
 
 // In-memory store for demo purposes. Replace with a database in a real app.
-// Only one admin user to start.
+// Data will be reset on server restarts or new server instances.
 const users: AppUser[] = [
   { id: '1', firstName: 'Admin', lastName: 'User', email: 'admin@example.com', role: 'admin', status: 'active', password: 'password123' },
 ];
@@ -166,4 +166,3 @@ export async function adminUpdateUserDetails(userId: string, data: AdminEditUser
    const { password, ...updatedUserClientSafe } = users[userIndex];
    return { success: true, message: 'User details updated.', user: updatedUserClientSafe };
 }
-

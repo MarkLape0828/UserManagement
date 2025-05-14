@@ -3,7 +3,8 @@
 
 import type { Department, AddDepartmentFormData, EditDepartmentFormData } from '@/lib/schemas';
 
-// Initialize with an empty array for departments
+// In-memory store for demo purposes.
+// Data will be reset on server restarts or new server instances.
 let departmentsStore: Department[] = [];
 
 export async function getDepartments(): Promise<Department[]> {

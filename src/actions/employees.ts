@@ -7,8 +7,10 @@ import { getUsers, type AppUser } from './auth'; // To link employees to users
 import { getDepartments, type Department } from './departments'; // To link employees to departments
 
 // In-memory store for demo purposes - Initialize with empty arrays
+// Data will be reset on server restarts or new server instances.
 let employees: Employee[] = [];
 let auditLog: AuditLogEntry[] = [];
+
 
 function generateEmployeeId(): string {
   const prefix = "EMP";
