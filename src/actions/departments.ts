@@ -12,12 +12,20 @@ let departments: Department[] = [
 ];
 
 export async function getDepartments(): Promise<Department[]> {
-  // Simulate fetching from a database
-  // In a real app, you'd calculate employeeCount here or it would be part of the DB query
-  return JSON.parse(JSON.stringify(departments.map(dept => ({
-    ...dept,
-    employeeCount: dept.employeeCount || 0 // Ensure employeeCount is a number
-  }))));
+  try {
+    // Ensure 'departments' is an array before trying to map over it.
+    // If 'departments' is not an array (e.g., undefined), default to an empty array.
+    const deptsToProcess = Array.isArray(departments) ? departments : [];
+    const processedDepartments = deptsToProcess.map(dept => ({
+      ...dept,
+      employeeCount: dept.employeeCount || 0 // Ensure employeeCount is a number
+    }));
+    // Simulate fetching from a database with a deep copy
+    return JSON.parse(JSON.stringify(processedDepartments));
+  } catch (error) {
+    console.error("Error in getDepartments server action:", error);
+    return []; // Return an empty array in case of any error during processing
+  }
 }
 
 export async function addDepartment(data: AddDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
@@ -49,16 +57,16 @@ export async function updateDepartment(departmentId: string, data: EditDepartmen
   }
 
   // Ensure name uniqueness if changed
-  if (name.toLowerCase() !== departments[departmentIndex].name.toLowerCase()) {
+  if (name && name.toLowerCase() !== departments[departmentIndex].name.toLowerCase()) {
     if (departments.some(d => d.name.toLowerCase() === name.toLowerCase() && d.id !== departmentId)) {
       return { success: false, message: 'Another department with this name already exists.' };
     }
   }
-
+  
   departments[departmentIndex] = {
     ...departments[departmentIndex],
-    name,
-    status,
+    name: name ?? departments[departmentIndex].name,
+    status: status ?? departments[departmentIndex].status,
   };
 
   return { success: true, message: 'Department updated successfully.', department: departments[departmentIndex] };
