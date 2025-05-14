@@ -1,7 +1,6 @@
 
 'use server';
 
-import { z } from 'zod';
 import type { Department, AddDepartmentFormData, EditDepartmentFormData } from '@/lib/schemas';
 
 // Renamed to avoid conflict if 'departments' is used as a parameter or local var elsewhere.
@@ -12,20 +11,32 @@ let departmentsStore: Department[] = [
 ];
 
 export async function getDepartments(): Promise<Department[]> {
+  // Ensure departmentsStore is always an array at the very start.
+  if (!Array.isArray(departmentsStore)) {
+    console.error("[Server Action] getDepartments: departmentsStore was not an array. Re-initializing.", typeof departmentsStore);
+    departmentsStore = []; // Re-initialize to prevent error with stringify
+  }
+  
   try {
-    // Ensure departmentsStore is treated as an array, even if it were unexpectedly null/undefined
-    const currentData = Array.isArray(departmentsStore) ? departmentsStore : [];
-    // Return a deep copy to prevent direct mutation of the store and ensure serializability
-    const dataToReturn = JSON.parse(JSON.stringify(currentData));
-    // Final check to ensure the parsed data is an array
-    return Array.isArray(dataToReturn) ? dataToReturn : [];
+    // Return a deep copy to prevent mutations and ensure serializability
+    // JSON.stringify will convert an empty array to "[]"
+    // JSON.parse("[]") will convert back to []
+    return JSON.parse(JSON.stringify(departmentsStore));
   } catch (error) {
-    console.error("Error in getDepartments processing:", error);
-    return []; // Fallback to empty array on any error
+    // This catch block might be redundant if departmentsStore is always an array of simple objects,
+    // but it's here for safety.
+    console.error("[Server Action] Error in getDepartments during JSON processing:", error);
+    return []; // Fallback to empty array on any error during stringify/parse
   }
 }
 
 export async function addDepartment(data: AddDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
+  // Ensure departmentsStore is always an array
+  if (!Array.isArray(departmentsStore)) {
+    console.error("[Server Action] addDepartment: departmentsStore was not an array. Re-initializing.");
+    departmentsStore = [];
+  }
+
   const { name } = data;
 
   if (departmentsStore.some(d => d.name.toLowerCase() === name.toLowerCase())) {
@@ -43,6 +54,14 @@ export async function addDepartment(data: AddDepartmentFormData): Promise<{ succ
 }
 
 export async function updateDepartment(departmentId: string, data: EditDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
+  // Ensure departmentsStore is always an array
+  if (!Array.isArray(departmentsStore)) {
+     console.error("[Server Action] updateDepartment: departmentsStore was not an array. Re-initializing.");
+    departmentsStore = [];
+    // If the store is corrupted, we probably can't update.
+    return { success: false, message: 'Department data store is unavailable.' };
+  }
+
   const { name, status } = data;
 
   const departmentIndex = departmentsStore.findIndex(d => d.id === departmentId);
@@ -66,9 +85,3 @@ export async function updateDepartment(departmentId: string, data: EditDepartmen
   // Return a serializable copy
   return { success: true, message: 'Department updated successfully.', department: JSON.parse(JSON.stringify(departmentsStore[departmentIndex])) };
 }
-
-// Placeholder for future: function to delete a department
-// export async function deleteDepartment(departmentId: string): Promise<{ success: boolean; message: string }> {
-//   departmentsStore = departmentsStore.filter(d => d.id !== departmentId);
-//   return { success: true, message: 'Department deleted successfully.' };
-// }
