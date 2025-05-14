@@ -21,6 +21,7 @@ const users: AppUser[] = [
   { id: '2', firstName: 'Employee', lastName: 'User', email: 'employee@example.com', role: 'employee', status: 'active', password: 'password123' },
   { id: '3', firstName: 'User', lastName: 'One', email: 'user@example.com', role: 'employee', status: 'active', password: 'userpass' },
   { id: '4', firstName: 'Admin', lastName: 'Two', email: 'admin2@example.com', role: 'admin', status: 'active', password: 'amdminpass' },
+  { id: '5', firstName: 'Unassigned', lastName: 'Employee', email: 'unassigned@example.com', role: 'employee', status: 'active', password: 'password123' },
 ];
 
 export async function login(data: LoginFormData): Promise<{ success: boolean; message: string }> {
@@ -168,3 +169,4 @@ export async function adminUpdateUserDetails(userId: string, data: AdminEditUser
    const { password, ...updatedUserClientSafe } = users[userIndex];
    return { success: true, message: 'User details updated.', user: updatedUserClientSafe };
 }
+
