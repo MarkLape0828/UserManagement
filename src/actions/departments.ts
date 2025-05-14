@@ -12,20 +12,48 @@ let departments: Department[] = [
 ];
 
 export async function getDepartments(): Promise<Department[]> {
+  let resultData: Department[] = []; // Initialize with a default empty array
+
   try {
-    // Ensure 'departments' is an array before trying to map over it.
-    // If 'departments' is not an array (e.g., undefined), default to an empty array.
-    const deptsToProcess = Array.isArray(departments) ? departments : [];
-    const processedDepartments = deptsToProcess.map(dept => ({
-      ...dept,
-      employeeCount: dept.employeeCount || 0 // Ensure employeeCount is a number
-    }));
-    // Simulate fetching from a database with a deep copy
-    return JSON.parse(JSON.stringify(processedDepartments));
+    const currentDepartments = departments; // Work with a local reference
+
+    if (!Array.isArray(currentDepartments)) {
+      // This case should ideally not happen if 'departments' is always an array.
+      // Log a warning if it's not an array, but still proceed to return empty resultData.
+      console.warn("'departments' source is not an array in getDepartments. Returning empty list. Value:", currentDepartments);
+    } else {
+      const deptsToProcess = currentDepartments.map(dept => {
+        // Basic sanitization/defaulting for each property to ensure serializability
+        // and prevent errors if a department object is malformed.
+        const safeDept = {
+          id: String(dept.id || `unknown_id_${Math.random().toString(36).substring(7)}`),
+          name: String(dept.name || 'Unnamed Department'),
+          status: (dept.status === 'active' || dept.status === 'inactive') ? dept.status : 'inactive' as 'active' | 'inactive',
+          employeeCount: Number(dept.employeeCount) || 0,
+        };
+        return safeDept;
+      });
+
+      // Deep copy to simulate API response and ensure data integrity
+      const stringified = JSON.stringify(deptsToProcess);
+      const parsed = JSON.parse(stringified);
+
+      // Final check to ensure parsed data is an array
+      if (Array.isArray(parsed)) {
+        resultData = parsed;
+      } else {
+        console.warn("Parsed department data is not an array in getDepartments. Returning empty list. Parsed value:", parsed);
+        // resultData remains empty as initialized
+      }
+    }
   } catch (error) {
-    console.error("Error in getDepartments server action:", error);
-    return []; // Return an empty array in case of any error during processing
+    console.error("Error within getDepartments server action:", error);
+    // resultData remains as the initialized empty array in case of any error
   }
+  
+  // This function must always return a Promise<Department[]>
+  // resultData is guaranteed to be an array here due to initialization and checks.
+  return resultData;
 }
 
 export async function addDepartment(data: AddDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
