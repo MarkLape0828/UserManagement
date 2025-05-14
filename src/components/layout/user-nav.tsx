@@ -13,9 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { logout } from '@/actions/auth';
 import type { UserSession } from '@/lib/auth';
-import { LogOut, User as UserIcon, LayoutDashboard } from 'lucide-react';
-import Link from 'next/link';
-import { ADMIN_DASHBOARD_PATH, EMPLOYEE_PROFILE_PATH } from '@/lib/constants';
+import { LogOut } from 'lucide-react';
 import { useTransition } from 'react';
 
 interface UserNavProps {
@@ -36,9 +34,6 @@ export function UserNav({ user }: UserNavProps) {
     const initials = names.map((n) => n[0]).join('');
     return initials.toUpperCase().slice(0, 2);
   };
-
-  const dashboardPath = user.role === 'admin' ? ADMIN_DASHBOARD_PATH : EMPLOYEE_PROFILE_PATH;
-  const dashboardLabel = user.role === 'admin' ? 'Admin Panel' : 'My Profile';
 
   return (
     <DropdownMenu>
@@ -62,15 +57,9 @@ export function UserNav({ user }: UserNavProps) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem asChild>
-            <Link href={dashboardPath}>
-              <LayoutDashboard className="mr-2 h-4 w-4" />
-              <span>{dashboardLabel}</span>
-            </Link>
-          </DropdownMenuItem>
-          {/* Add more items here like Settings, etc. if needed */}
+          {/* Removed Dashboard/Profile Link */}
         </DropdownMenuGroup>
-        <DropdownMenuSeparator />
+        {/* <DropdownMenuSeparator /> */} {/* Separator might not be needed if only one item group or one item */}
         <DropdownMenuItem onClick={handleLogout} disabled={isPending}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>{isPending ? 'Logging out...' : 'Log out'}</span>
