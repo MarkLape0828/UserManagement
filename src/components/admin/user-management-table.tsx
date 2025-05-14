@@ -2,7 +2,7 @@
 'use client';
 
 import type { AppUser } from '@/actions/auth';
-import { adminUpdateUserStatus, getUsers } from '@/actions/auth';
+import { getUsers } from '@/actions/auth'; // Removed adminUpdateUserStatus import
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -14,10 +14,10 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Edit, PlusCircle, ToggleLeft, ToggleRight, RefreshCw, UserX, UserCheck } from 'lucide-react';
+import { Edit, PlusCircle, RefreshCw, UserX, UserCheck } from 'lucide-react'; // Removed ToggleLeft, ToggleRight
 import React, { useState, useEffect, useTransition } from 'react';
 import { AddUserDialog } from './add-user-dialog';
-import { EditUserDialog } from './edit-user-dialog'; // New import
+import { EditUserDialog } from './edit-user-dialog';
 
 interface UserManagementTableProps {}
 
@@ -27,14 +27,14 @@ export function UserManagementTable({}: UserManagementTableProps) {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
-  const [isUpdatingStatus, startUpdateTransition] = useTransition();
+  // const [isUpdatingStatus, startUpdateTransition] = useTransition(); // Can be removed if not used elsewhere
   const { toast } = useToast();
 
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
       const fetchedUsers = await getUsers();
-      setUsers(fetchedUsers);
+      setUsers(fetchedUsers.sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName)));
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to fetch users.', variant: 'destructive' });
       console.error("Failed to fetch users:", error);
@@ -48,7 +48,7 @@ export function UserManagementTable({}: UserManagementTableProps) {
   }, []);
 
   const handleUserAdded = (newUser: AppUser) => {
-    setUsers(prevUsers => [...prevUsers, newUser].sort((a, b) => a.name.localeCompare(b.name)));
+    setUsers(prevUsers => [...prevUsers, newUser].sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName)));
   };
 
   const handleOpenEditDialog = (user: AppUser) => {
@@ -57,28 +57,13 @@ export function UserManagementTable({}: UserManagementTableProps) {
   };
 
   const handleUserUpdated = (updatedUser: AppUser) => {
-    setUsers(prevUsers => 
+    setUsers(prevUsers =>
       prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u)
-               .sort((a, b) => a.name.localeCompare(b.name))
+               .sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName))
     );
     setEditingUser(null); // Clear editing user
   };
 
-  const handleToggleStatus = async (userId: string, currentStatus: 'active' | 'inactive') => {
-    startUpdateTransition(async () => {
-      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-      const result = await adminUpdateUserStatus(userId, newStatus);
-      if (result.success) {
-        toast({ title: 'Status Updated', description: result.message });
-        setUsers(prevUsers => 
-          prevUsers.map(u => u.id === userId ? { ...u, status: newStatus } : u)
-        );
-      } else {
-        toast({ title: 'Update Failed', description: result.message, variant: 'destructive' });
-      }
-    });
-  };
-  
   if (isLoading && users.length === 0) {
     return <div className="flex justify-center items-center p-8"><RefreshCw className="h-8 w-8 animate-spin text-primary" /> <span className="ml-2">Loading users...</span></div>;
   }
@@ -110,7 +95,7 @@ export function UserManagementTable({}: UserManagementTableProps) {
           <TableBody>
             {users.length > 0 ? users.map((user) => (
               <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.name}</TableCell>
+                <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
                   <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
@@ -118,8 +103,8 @@ export function UserManagementTable({}: UserManagementTableProps) {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Badge 
-                    variant={user.status === 'active' ? 'secondary' : 'destructive'} 
+                  <Badge
+                    variant={user.status === 'active' ? 'secondary' : 'destructive'}
                     className={`text-xs ${user.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
                   >
                      {user.status === 'active' ? <UserCheck className="mr-1 h-3 w-3" /> : <UserX className="mr-1 h-3 w-3" /> }
@@ -127,28 +112,16 @@ export function UserManagementTable({}: UserManagementTableProps) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right space-x-1">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleOpenEditDialog(user)}
                     aria-label="Edit user"
-                    disabled={isUpdatingStatus}
+                    // disabled={isUpdatingStatus} // Re-evaluate if isUpdatingStatus is still needed
                   >
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => handleToggleStatus(user.id, user.status)}
-                    disabled={isUpdatingStatus}
-                    aria-label={user.status === 'active' ? 'Deactivate user' : 'Activate user'}
-                  >
-                    {isUpdatingStatus && editingUser?.id !== user.id ? ( // Show spinner only for the user being updated if needed, or generally
-                       user.status === 'active' ? <ToggleRight className="h-4 w-4 text-red-500" /> : <ToggleLeft className="h-4 w-4 text-green-500" />
-                    ) : (
-                       user.status === 'active' ? <ToggleRight className="h-4 w-4 text-red-500" /> : <ToggleLeft className="h-4 w-4 text-green-500" />
-                    )}
-                  </Button>
+                  {/* Status toggle buttons removed from here */}
                 </TableCell>
               </TableRow>
             )) : (
@@ -167,7 +140,7 @@ export function UserManagementTable({}: UserManagementTableProps) {
         onOpenChange={setIsAddUserDialogOpen}
         onUserAdded={handleUserAdded}
       />
-      
+
       {editingUser && (
         <EditUserDialog
           user={editingUser}

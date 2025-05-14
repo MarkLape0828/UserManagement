@@ -1,3 +1,4 @@
+
 import { AdminDashboard } from '@/components/admin/admin-dashboard';
 import { getUserSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
@@ -8,7 +9,7 @@ export default async function AdminPage() {
 
   if (!session || session.role !== 'admin') {
     // This should ideally be caught by middleware, but as a fallback:
-    redirect('/login'); 
+    redirect('/login');
   }
 
   return (
@@ -17,7 +18,7 @@ export default async function AdminPage() {
         <CardHeader>
           <CardTitle className="text-3xl font-bold tracking-tight text-primary">Admin Panel</CardTitle>
           <CardDescription className="text-lg">
-            Welcome, {session.name}. Manage users, departments, and system settings.
+            Welcome, {session.firstName} {session.lastName}. Manage users, departments, and system settings.
           </CardDescription>
         </CardHeader>
       </Card>

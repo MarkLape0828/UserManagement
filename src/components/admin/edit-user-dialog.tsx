@@ -34,7 +34,7 @@ export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: Edit
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit User: {user.name}</DialogTitle>
+          <DialogTitle>Edit User: {user.firstName} {user.lastName}</DialogTitle>
           <DialogDescription>
             Modify the details for this user. Password cannot be changed here.
           </DialogDescription>

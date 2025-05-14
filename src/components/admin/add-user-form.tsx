@@ -40,7 +40,8 @@ export function AddUserForm({ onSuccess, onCancel }: AddUserFormProps) {
   const form = useForm<AdminAddUserFormData>({
     resolver: zodResolver(AdminAddUserSchema),
     defaultValues: {
-      name: '',
+      firstName: '',
+      lastName: '',
       email: '',
       password: '',
       role: 'employee',
@@ -56,7 +57,7 @@ export function AddUserForm({ onSuccess, onCancel }: AddUserFormProps) {
           description: result.message,
         });
         onSuccess(result.user);
-        form.reset(); 
+        form.reset();
       } else {
         toast({
           title: 'Failed to Add User',
@@ -70,19 +71,34 @@ export function AddUserForm({ onSuccess, onCancel }: AddUserFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Full Name</FormLabel>
-              <FormControl>
-                <Input placeholder="John Doe" {...field} disabled={isPending} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="firstName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>First Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="John" {...field} disabled={isPending} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="lastName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Last Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="Doe" {...field} disabled={isPending} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <FormField
           control={form.control}
@@ -106,10 +122,10 @@ export function AddUserForm({ onSuccess, onCancel }: AddUserFormProps) {
               <FormLabel>Initial Password</FormLabel>
               <FormControl>
                 <div className="relative">
-                  <Input 
-                    type={showPassword ? "text" : "password"} 
-                    placeholder="••••••••" 
-                    {...field} 
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    {...field}
                     disabled={isPending}
                   />
                   <Button
@@ -151,7 +167,7 @@ export function AddUserForm({ onSuccess, onCancel }: AddUserFormProps) {
             </FormItem>
           )}
         />
-        
+
         <div className="flex justify-end space-x-2 pt-2">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
             Cancel
