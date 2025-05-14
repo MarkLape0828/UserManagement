@@ -20,11 +20,14 @@ export async function getUserSession(cookieStore?: ReadonlyRequestCookies): Prom
       if (session.id && session.name && session.email && session.role) {
         return session as UserSession;
       }
+      console.warn('Session cookie data failed validation:', session);
+      return null; // Validation failed
     } catch (error) {
       console.error('Failed to parse session cookie:', error);
-      // Clear invalid cookie
-      store.delete(AUTH_COOKIE_NAME);
-      return null;
+      // Do not delete the cookie here. Let the caller (middleware/page) decide how to handle a bad cookie.
+      // If this function were to delete it, and it's called from a Server Component,
+      // it could clear a cookie that middleware just validated, leading to logout on next navigation.
+      return null; // Parsing failed
     }
   }
   return null;
