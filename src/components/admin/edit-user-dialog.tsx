@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { AppUser } from '@/actions/auth';
+import type { AppUserProfile } from '@/services/userService'; // Updated import
 import {
   Dialog,
   DialogContent,
@@ -12,18 +12,18 @@ import {
 import { EditUserForm } from './edit-user-form';
 
 interface EditUserDialogProps {
-  user: AppUser | null; // User to edit, null if dialog is not for editing
+  user: AppUserProfile | null; 
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUserUpdated: (updatedUser: AppUser) => void;
+  onUserUpdated: (updatedUser: AppUserProfile) => void; // Updated type
 }
 
 export function EditUserDialog({ user, open, onOpenChange, onUserUpdated }: EditUserDialogProps) {
-  if (!user) return null; // Don't render if no user is selected for editing
+  if (!user) return null; 
 
-  const handleSuccess = (updatedUser: AppUser) => {
+  const handleSuccess = (updatedUser: AppUserProfile) => { // Updated type
     onUserUpdated(updatedUser);
-    onOpenChange(false); // Close dialog on success
+    onOpenChange(false); 
   };
 
   const handleCancel = () => {

@@ -1,8 +1,8 @@
 
 'use client';
 
-import type { AppUser } from '@/actions/auth';
-import { getUsers } from '@/actions/auth'; // Removed adminUpdateUserStatus import
+import type { AppUserProfile } from '@/services/userService'; // Updated import
+import { getUsers } from '@/actions/auth';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -14,30 +14,37 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Edit, PlusCircle, RefreshCw, UserX, UserCheck } from 'lucide-react'; // Removed ToggleLeft, ToggleRight
-import React, { useState, useEffect, useTransition } from 'react';
+import { Edit, PlusCircle, RefreshCw, UserX, UserCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react'; // Removed useTransition
 import { AddUserDialog } from './add-user-dialog';
 import { EditUserDialog } from './edit-user-dialog';
 
 interface UserManagementTableProps {}
 
 export function UserManagementTable({}: UserManagementTableProps) {
-  const [users, setUsers] = useState<AppUser[]>([]);
+  const [users, setUsers] = useState<AppUserProfile[]>([]); // Updated type
   const [isLoading, setIsLoading] = useState(true);
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<AppUser | null>(null);
-  // const [isUpdatingStatus, startUpdateTransition] = useTransition(); // Can be removed if not used elsewhere
+  const [editingUser, setEditingUser] = useState<AppUserProfile | null>(null); // Updated type
   const { toast } = useToast();
 
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
       const fetchedUsers = await getUsers();
-      setUsers(fetchedUsers.sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName)));
+      // Ensure fetchedUsers is an array before sorting
+      if (Array.isArray(fetchedUsers)) {
+        setUsers(fetchedUsers.sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName)));
+      } else {
+        console.error("getUsers did not return an array:", fetchedUsers);
+        setUsers([]); // Default to empty array if data is not as expected
+        toast({ title: 'Error', description: 'Failed to fetch users or data is invalid.', variant: 'destructive' });
+      }
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to fetch users.', variant: 'destructive' });
       console.error("Failed to fetch users:", error);
+      setUsers([]); // Default to empty array on error
     } finally {
       setIsLoading(false);
     }
@@ -47,21 +54,21 @@ export function UserManagementTable({}: UserManagementTableProps) {
     fetchUsers();
   }, []);
 
-  const handleUserAdded = (newUser: AppUser) => {
+  const handleUserAdded = (newUser: AppUserProfile) => { // Updated type
     setUsers(prevUsers => [...prevUsers, newUser].sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName)));
   };
 
-  const handleOpenEditDialog = (user: AppUser) => {
+  const handleOpenEditDialog = (user: AppUserProfile) => { // Updated type
     setEditingUser(user);
     setIsEditUserDialogOpen(true);
   };
 
-  const handleUserUpdated = (updatedUser: AppUser) => {
+  const handleUserUpdated = (updatedUser: AppUserProfile) => { // Updated type
     setUsers(prevUsers =>
-      prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u)
+      prevUsers.map(u => u.uid === updatedUser.uid ? updatedUser : u) // Use uid
                .sort((a, b) => (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName))
     );
-    setEditingUser(null); // Clear editing user
+    setEditingUser(null);
   };
 
   if (isLoading && users.length === 0) {
@@ -94,7 +101,7 @@ export function UserManagementTable({}: UserManagementTableProps) {
           </TableHeader>
           <TableBody>
             {users.length > 0 ? users.map((user) => (
-              <TableRow key={user.id}>
+              <TableRow key={user.uid}> {/* Use uid */}
                 <TableCell className="font-medium">{user.firstName} {user.lastName}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
@@ -117,11 +124,9 @@ export function UserManagementTable({}: UserManagementTableProps) {
                     size="icon"
                     onClick={() => handleOpenEditDialog(user)}
                     aria-label="Edit user"
-                    // disabled={isUpdatingStatus} // Re-evaluate if isUpdatingStatus is still needed
                   >
                     <Edit className="h-4 w-4" />
                   </Button>
-                  {/* Status toggle buttons removed from here */}
                 </TableCell>
               </TableRow>
             )) : (
@@ -147,7 +152,7 @@ export function UserManagementTable({}: UserManagementTableProps) {
           open={isEditUserDialogOpen}
           onOpenChange={(open) => {
             setIsEditUserDialogOpen(open);
-            if (!open) setEditingUser(null); // Clear user when dialog closes
+            if (!open) setEditingUser(null);
           }}
           onUserUpdated={handleUserUpdated}
         />

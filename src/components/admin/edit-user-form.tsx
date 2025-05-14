@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { AppUser } from '@/actions/auth';
+import type { AppUserProfile } from '@/services/userService'; // Updated import
 import { adminUpdateUserDetails } from '@/actions/auth';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,8 +28,8 @@ import { useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 
 interface EditUserFormProps {
-  user: AppUser; // User to edit
-  onSuccess: (updatedUser: AppUser) => void;
+  user: AppUserProfile; // Updated type
+  onSuccess: (updatedUser: AppUserProfile) => void; // Updated type
   onCancel: () => void;
 }
 
@@ -50,7 +50,7 @@ export function EditUserForm({ user, onSuccess, onCancel }: EditUserFormProps) {
 
   const onSubmit = (data: AdminEditUserFormData) => {
     startTransition(async () => {
-      const result = await adminUpdateUserDetails(user.id, data);
+      const result = await adminUpdateUserDetails(user.uid, data); // Use uid
       if (result.success && result.user) {
         toast({
           title: 'User Updated',

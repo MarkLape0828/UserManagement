@@ -14,11 +14,11 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Edit, PlusCircle, RefreshCw, UserCheck, UserX, CalendarDays, Briefcase, Building } from 'lucide-react';
+import { Edit, PlusCircle, RefreshCw, UserCheck, UserX, CalendarDays, Briefcase } from 'lucide-react'; // Removed Building
 import React, { useState, useEffect } from 'react';
 import { AddEmployeeDialog } from './add-employee-dialog';
 import { EditEmployeeDialog } from './edit-employee-dialog';
-import type { AppUser } from '@/actions/auth';
+import type { AppUserProfile } from '@/services/userService'; // Updated import
 import type { Department } from '@/lib/schemas';
 import { getUsersNotYetEmployees } from '@/actions/employees';
 import { getDepartments } from '@/actions/departments';
@@ -35,7 +35,7 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<EnrichedEmployee | null>(null);
   
-  const [availableUsers, setAvailableUsers] = useState<AppUser[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<AppUserProfile[]>([]); // Updated type
   const [availableDepartments, setAvailableDepartments] = useState<Department[]>([]);
 
   const { toast } = useToast();
@@ -45,22 +45,20 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
     try {
       const [empsResponse, usersResponse, deptsResponse] = await Promise.all([
         getEnrichedEmployees(),
-        getUsersNotYetEmployees(),
+        getUsersNotYetEmployees(), // This action already filters users not yet employees
         getDepartments()
       ]);
 
-      // Ensure responses are arrays before setting state
       const validEmps = Array.isArray(empsResponse) ? empsResponse : [];
       const validUsers = Array.isArray(usersResponse) ? usersResponse : [];
       const validDepts = Array.isArray(deptsResponse) ? deptsResponse : [];
 
-      setEmployees(validEmps);
+      setEmployees(validEmps.sort((a,b) => (a.userName ?? '').localeCompare(b.userName ?? '')));
       setAvailableUsers(validUsers);
-      setAvailableDepartments(validDepts.filter(d => d.status === 'active')); // Only active departments for assignment
+      setAvailableDepartments(validDepts.filter(d => d.status === 'active'));
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to fetch employee data.', variant: 'destructive' });
       console.error("Failed to fetch employee data:", error);
-      // Set to empty arrays in case of error to maintain type consistency and prevent .length errors
       setEmployees([]);
       setAvailableUsers([]);
       setAvailableDepartments([]);
@@ -74,8 +72,8 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
   }, []);
 
   const handleEmployeeAdded = (newEmployee: EnrichedEmployee) => {
-    setEmployees(prev => [...prev, newEmployee].sort((a,b) => a.id.localeCompare(b.id)));
-    fetchData(); // Refresh available users as one has been assigned
+    // setEmployees(prev => [...prev, newEmployee].sort((a,b) => (a.userName ?? '').localeCompare(b.userName ?? '')));
+    fetchData(); // Refresh all data to ensure consistency, including available users
   };
 
   const handleOpenEditDialog = (employee: EnrichedEmployee) => {
@@ -86,9 +84,11 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
   const handleEmployeeUpdated = (updatedEmployee: EnrichedEmployee) => {
     setEmployees(prev =>
       prev.map(e => e.id === updatedEmployee.id ? updatedEmployee : e)
-           .sort((a, b) => a.id.localeCompare(b.id))
+           .sort((a, b) => (a.userName ?? '').localeCompare(b.userName ?? ''))
     );
     setEditingEmployee(null);
+    // Optionally re-fetch all data if department/user changes might affect other parts
+    // fetchData(); 
   };
 
   if (isLoading && employees.length === 0 && availableUsers.length === 0 && availableDepartments.length === 0) {
@@ -202,4 +202,3 @@ export function EmployeeManagementTable({ adminUserId }: EmployeeManagementTable
     </>
   );
 }
-

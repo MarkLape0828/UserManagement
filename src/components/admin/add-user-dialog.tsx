@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { AppUser } from '@/actions/auth';
+import type { AppUserProfile } from '@/services/userService'; // Updated import
 import {
   Dialog,
   DialogContent,
@@ -14,13 +14,13 @@ import { AddUserForm } from './add-user-form';
 interface AddUserDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUserAdded: (newUser: AppUser) => void;
+  onUserAdded: (newUser: AppUserProfile) => void; // Updated type
 }
 
 export function AddUserDialog({ open, onOpenChange, onUserAdded }: AddUserDialogProps) {
-  const handleSuccess = (newUser: AppUser) => {
+  const handleSuccess = (newUser: AppUserProfile) => { // Updated type
     onUserAdded(newUser);
-    onOpenChange(false); // Close dialog on success
+    onOpenChange(false); 
   };
 
   const handleCancel = () => {

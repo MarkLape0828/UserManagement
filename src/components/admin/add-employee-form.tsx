@@ -34,14 +34,14 @@ import { useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import type { AppUser } from '@/actions/auth';
+import type { AppUserProfile } from '@/services/userService'; // Updated import
 import type { Department } from '@/lib/schemas';
 
 interface AddEmployeeFormProps {
   onSuccess: (newEmployee: EnrichedEmployee) => void;
   onCancel: () => void;
   adminUserId: string;
-  availableUsers: AppUser[];
+  availableUsers: AppUserProfile[]; // Updated type
   availableDepartments: Department[];
 }
 
@@ -61,7 +61,7 @@ export function AddEmployeeForm({
       userId: '',
       position: '',
       departmentId: '',
-      hireDate: undefined, // Set to undefined initially so placeholder shows
+      hireDate: undefined, 
       status: 'active',
     },
   });
@@ -103,7 +103,7 @@ export function AddEmployeeForm({
                 </FormControl>
                 <SelectContent>
                   {availableUsers.map(user => (
-                    <SelectItem key={user.id} value={user.id}>
+                    <SelectItem key={user.uid} value={user.uid}> {/* Use uid */}
                       {user.firstName} {user.lastName} ({user.email})
                     </SelectItem>
                   ))}

@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { AppUser } from '@/actions/auth';
+import type { AppUserProfile } from '@/services/userService'; // Updated import
 import { addUserByAdmin } from '@/actions/auth';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,7 +28,7 @@ import { useState, useTransition } from 'react';
 import { useForm } from 'react-hook-form';
 
 interface AddUserFormProps {
-  onSuccess: (newUser: AppUser) => void;
+  onSuccess: (newUser: AppUserProfile) => void; // Updated type
   onCancel: () => void;
 }
 

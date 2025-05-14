@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { AddEmployeeForm } from './add-employee-form';
-import type { AppUser } from '@/actions/auth';
+import type { AppUserProfile } from '@/services/userService'; // Updated import
 import type { Department } from '@/lib/schemas';
 
 interface AddEmployeeDialogProps {
@@ -18,7 +18,7 @@ interface AddEmployeeDialogProps {
   onOpenChange: (open: boolean) => void;
   onEmployeeAdded: (newEmployee: EnrichedEmployee) => void;
   adminUserId: string;
-  availableUsers: AppUser[];
+  availableUsers: AppUserProfile[]; // Updated type
   availableDepartments: Department[];
 }
 
@@ -33,7 +33,7 @@ export function AddEmployeeDialog({
   
   const handleSuccess = (newEmployee: EnrichedEmployee) => {
     onEmployeeAdded(newEmployee);
-    onOpenChange(false); // Close dialog
+    onOpenChange(false); 
   };
 
   return (
