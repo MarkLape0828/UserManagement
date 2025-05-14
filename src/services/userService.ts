@@ -1,16 +1,20 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, addDoc, doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
-import type { AppUser } from '@/actions/auth'; // Assuming AppUser includes password
+import { collection, doc, getDoc, setDoc, updateDoc, getDocs, query, where, Timestamp } from 'firebase/firestore';
 
-const USERS_COLLECTION = 'users';
+const USER_PROFILES_COLLECTION = 'userProfiles';
 
-// IMPORTANT: Password Handling
-// In a real application, passwords should NEVER be stored in plaintext.
-// They should be hashed securely on the server before being stored.
-// Firebase Authentication is the recommended way to handle users and passwords.
-// For this prototype, we are storing plaintext passwords for simplicity.
+export interface AppUserProfile {
+  uid: string; // Firebase Auth UID, also serves as document ID in Firestore
+  firstName: string;
+  lastName: string;
+  email: string; // This email should match the Firebase Auth email
+  role: 'admin' | 'employee';
+  status: 'active' | 'inactive';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
 
 function ensureDbInitialized() {
   if (!db) {
@@ -19,68 +23,115 @@ function ensureDbInitialized() {
   }
 }
 
-export async function getUserByEmail(email: string): Promise<AppUser | null> {
-  ensureDbInitialized();
-  const usersRef = collection(db!, USERS_COLLECTION);
-  const q = query(usersRef, where('email', '==', email));
-  const querySnapshot = await getDocs(q);
+// Helper to map Firestore doc data to AppUserProfile, ensuring dates are JS Dates
+function mapFirestoreDocToProfile(docId: string, data: any): AppUserProfile {
+  return {
+    uid: docId,
+    firstName: data.firstName,
+    lastName: data.lastName,
+    email: data.email,
+    role: data.role,
+    status: data.status,
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
+  } as unknown as AppUserProfile; // Cast to AppUserProfile after mapping
+}
 
-  if (querySnapshot.empty) {
+
+export async function getUserProfileById(uid: string): Promise<AppUserProfile | null> {
+  ensureDbInitialized();
+  try {
+    const profileDocRef = doc(db!, USER_PROFILES_COLLECTION, uid);
+    const docSnap = await getDoc(profileDocRef);
+    if (docSnap.exists()) {
+      return mapFirestoreDocToProfile(docSnap.id, docSnap.data());
+    }
     return null;
+  } catch (error) {
+    console.error(`Error fetching user profile by UID ${uid}:`, error);
+    throw error; // Re-throw to be handled by the calling server action
   }
-  const userDoc = querySnapshot.docs[0];
-  return { id: userDoc.id, ...userDoc.data() } as AppUser;
 }
 
-export async function getUserById(userId: string): Promise<AppUser | null> {
+export async function getUserProfileByEmail(email: string): Promise<AppUserProfile | null> {
   ensureDbInitialized();
-  const userDocRef = doc(db!, USERS_COLLECTION, userId);
-  const userDocSnap = await getDoc(userDocRef);
-
-  if (!userDocSnap.exists()) {
+  try {
+    const profilesRef = collection(db!, USER_PROFILES_COLLECTION);
+    const q = query(profilesRef, where('email', '==', email));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      const docSnap = querySnapshot.docs[0];
+      return mapFirestoreDocToProfile(docSnap.id, docSnap.data());
+    }
     return null;
+  } catch (error) {
+    console.error(`Error fetching user profile by email ${email}:`, error);
+    throw error;
   }
-  return { id: userDocSnap.id, ...userDocSnap.data() } as AppUser;
 }
 
-export async function createUser(userData: Omit<AppUser, 'id'>): Promise<AppUser> {
+export async function createUserProfile(
+  uid: string,
+  profileData: Omit<AppUserProfile, 'uid' | 'createdAt' | 'updatedAt'>
+): Promise<AppUserProfile> {
   ensureDbInitialized();
-  // In a real app, hash password here before saving if not using Firebase Auth
-  const usersRef = collection(db!, USERS_COLLECTION);
-  const docRef = await addDoc(usersRef, userData);
-  return { id: docRef.id, ...userData };
-}
-
-// Used for creating a user with a specific ID (e.g., initial admin)
-export async function createUserWithId(userId: string, userData: Omit<AppUser, 'id'>): Promise<AppUser> {
-    ensureDbInitialized();
-    const userDocRef = doc(db!, USERS_COLLECTION, userId);
-    await setDoc(userDocRef, userData);
-    return { id: userId, ...userData };
-}
-
-
-export async function adminUpdateUser(userId: string, userData: Partial<Omit<AppUser, 'id' | 'password'>>): Promise<AppUser | null> {
-  ensureDbInitialized();
-  const userDocRef = doc(db!, USERS_COLLECTION, userId);
-  await updateDoc(userDocRef, userData);
-  // Re-fetch to ensure we return the complete, updated user object
-  const updatedUserSnap = await getDoc(userDocRef);
-  if (!updatedUserSnap.exists()) {
-      // This case should ideally not happen if updateDoc didn't throw and ID is correct
-      console.error(`User with ID ${userId} not found after update attempt.`);
-      return null; 
+  try {
+    const profileDocRef = doc(db!, USER_PROFILES_COLLECTION, uid);
+    const now = Timestamp.now();
+    const fullProfileData = {
+      ...profileData,
+      uid, // ensure uid is part of the document data too
+      createdAt: now,
+      updatedAt: now,
+    };
+    await setDoc(profileDocRef, fullProfileData);
+    // Re-fetch to get Timestamps correctly converted if needed, or construct manually
+    const newDocSnap = await getDoc(profileDocRef);
+    if (!newDocSnap.exists()) {
+        throw new Error("Failed to retrieve created user profile.");
+    }
+    return mapFirestoreDocToProfile(newDocSnap.id, newDocSnap.data());
+  } catch (error) {
+    console.error(`Error creating user profile for UID ${uid}:`, error);
+    throw error;
   }
-  return { id: updatedUserSnap.id, ...updatedUserSnap.data() } as AppUser;
 }
 
-export async function getAllUsers(): Promise<AppUser[]> {
+export async function updateUserProfile(
+  uid: string,
+  profileUpdateData: Partial<Omit<AppUserProfile, 'uid' | 'createdAt' | 'updatedAt'>>
+): Promise<AppUserProfile | null> {
   ensureDbInitialized();
-  const usersRef = collection(db!, USERS_COLLECTION);
-  const querySnapshot = await getDocs(usersRef);
-  const usersList: AppUser[] = [];
-  querySnapshot.forEach((doc) => {
-    usersList.push({ id: doc.id, ...doc.data() } as AppUser);
-  });
-  return usersList;
+  try {
+    const profileDocRef = doc(db!, USER_PROFILES_COLLECTION, uid);
+    const updateData = {
+      ...profileUpdateData,
+      updatedAt: Timestamp.now(),
+    };
+    await updateDoc(profileDocRef, updateData);
+    const updatedDocSnap = await getDoc(profileDocRef);
+    if (updatedDocSnap.exists()) {
+      return mapFirestoreDocToProfile(updatedDocSnap.id, updatedDocSnap.data());
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error updating user profile for UID ${uid}:`, error);
+    throw error;
+  }
+}
+
+export async function getAllUserProfiles(): Promise<AppUserProfile[]> {
+  ensureDbInitialized();
+  try {
+    const profilesRef = collection(db!, USER_PROFILES_COLLECTION);
+    const querySnapshot = await getDocs(profilesRef);
+    const profiles: AppUserProfile[] = [];
+    querySnapshot.forEach((docSnap) => {
+      profiles.push(mapFirestoreDocToProfile(docSnap.id, docSnap.data()));
+    });
+    return profiles;
+  } catch (error) {
+    console.error('Error fetching all user profiles:', error);
+    throw error;
+  }
 }

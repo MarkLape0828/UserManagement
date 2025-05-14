@@ -1,6 +1,7 @@
 
 import { initializeApp, getApps, getApp, type FirebaseOptions } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,7 +16,7 @@ const firebaseConfig: FirebaseOptions = {
 // Initialize Firebase
 let app;
 let auth: ReturnType<typeof getAuth> | null = null;
-let db = null; // Placeholder for Firestore if re-added later
+let db: ReturnType<typeof getFirestore> | null = null;
 
 if (!firebaseConfig.projectId) {
   console.error(
@@ -31,17 +32,19 @@ if (!firebaseConfig.projectId) {
       app = getApp();
     }
     auth = getAuth(app);
-    // db = getFirestore(app); // Firestore not used in this version
-    console.log('Firebase app initialized and Auth instance obtained successfully.');
+    db = getFirestore(app); // Initialize Firestore
+    console.log('Firebase app initialized, Auth and Firestore instances obtained successfully.');
   } catch (error) {
     console.error('CRITICAL: Firebase initialization failed catastrophically. Error:', error);
-    // app will be undefined and auth will remain null
+    // app will be undefined, auth and db will remain null
   }
 }
 
 if (!auth) {
-    // This log will appear if auth is still null after the initialization block.
     console.error("CRITICAL: Firebase Auth instance is null after initialization attempt. Authentication operations will fail. Review Firebase configuration and previous logs.");
+}
+if (!db) {
+    console.error("CRITICAL: Firestore database (db) instance is null after initialization attempt. Database operations will fail. Review Firebase configuration and previous logs.");
 }
 
 
