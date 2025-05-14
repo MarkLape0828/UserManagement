@@ -30,8 +30,15 @@ export function DepartmentManagementTable() {
   const fetchDepartments = async () => {
     setIsLoading(true);
     try {
-      const fetchedDepartments = await getDepartments();
-      setDepartments(fetchedDepartments.sort((a, b) => a.name.localeCompare(b.name)));
+      const fetchedDepartmentsData = await getDepartments();
+      // Ensure fetchedDepartmentsData is an array before sorting
+      if (Array.isArray(fetchedDepartmentsData)) {
+        setDepartments(fetchedDepartmentsData.sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        console.error("fetchDepartments: getDepartments did not return an array.", fetchedDepartmentsData);
+        setDepartments([]); // Set to empty array to prevent further errors
+        toast({ title: 'Error', description: 'Failed to fetch departments or data is invalid.', variant: 'destructive' });
+      }
     } catch (error) {
       toast({ title: 'Error', description: 'Failed to fetch departments.', variant: 'destructive' });
       console.error("Failed to fetch departments:", error);
