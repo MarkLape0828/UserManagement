@@ -2,79 +2,44 @@
 'use server';
 
 import type { Department, AddDepartmentFormData, EditDepartmentFormData } from '@/lib/schemas';
-
-// In-memory store for demo purposes.
-// Data will be reset on server restarts or new server instances.
-let departmentsStore: Department[] = [];
+import { getAllDepartments, createDepartment, updateExistingDepartment } from '@/services/departmentService';
 
 export async function getDepartments(): Promise<Department[]> {
-  // Ensure departmentsStore is always an array at the very start.
-  if (!Array.isArray(departmentsStore)) {
-    console.error("[Server Action] getDepartments: departmentsStore was not an array. Re-initializing.", typeof departmentsStore);
-    departmentsStore = []; // Re-initialize to prevent error with stringify
-  }
-  
   try {
-    // Return a deep copy to prevent mutations and ensure serializability
-    return JSON.parse(JSON.stringify(departmentsStore));
+    return await getAllDepartments();
   } catch (error) {
-    console.error("[Server Action] Error in getDepartments during JSON processing:", error);
-    return []; // Fallback to empty array on any error during stringify/parse
+    console.error("[Server Action] Error in getDepartments during Firestore fetch:", error);
+    return []; 
   }
 }
 
 export async function addDepartment(data: AddDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
-  // Ensure departmentsStore is always an array
-  if (!Array.isArray(departmentsStore)) {
-    console.error("[Server Action] addDepartment: departmentsStore was not an array. Re-initializing.");
-    departmentsStore = [];
+  try {
+    const newDepartment = await createDepartment(data);
+    if (!newDepartment) {
+        return { success: false, message: 'Department with this name already exists.' };
+    }
+    return { success: true, message: 'Department added successfully.', department: newDepartment };
+  } catch (error) {
+    console.error("[Server Action] Error adding department:", error);
+    return { success: false, message: 'Failed to add department due to a server error.' };
   }
-
-  const { name } = data;
-
-  if (departmentsStore.some(d => d.name.toLowerCase() === name.toLowerCase())) {
-    return { success: false, message: 'Department with this name already exists.' };
-  }
-
-  const newDepartment: Department = {
-    id: `dept_${Date.now()}_${departmentsStore.length + 1}`,
-    name,
-    status: 'active', 
-  };
-  departmentsStore.push(newDepartment);
-  // Return a serializable copy
-  return { success: true, message: 'Department added successfully.', department: JSON.parse(JSON.stringify(newDepartment)) };
 }
 
 export async function updateDepartment(departmentId: string, data: EditDepartmentFormData): Promise<{ success: boolean; message: string; department?: Department }> {
-  // Ensure departmentsStore is always an array
-  if (!Array.isArray(departmentsStore)) {
-     console.error("[Server Action] updateDepartment: departmentsStore was not an array. Re-initializing.");
-    departmentsStore = [];
-    // If the store is corrupted, we probably can't update.
-    return { success: false, message: 'Department data store is unavailable.' };
-  }
-
-  const { name, status } = data;
-
-  const departmentIndex = departmentsStore.findIndex(d => d.id === departmentId);
-  if (departmentIndex === -1) {
-    return { success: false, message: 'Department not found.' };
-  }
-
-  // Ensure name uniqueness if changed
-  if (name && name.toLowerCase() !== departmentsStore[departmentIndex].name.toLowerCase()) {
-    if (departmentsStore.some(d => d.name.toLowerCase() === name.toLowerCase() && d.id !== departmentId)) {
-      return { success: false, message: 'Another department with this name already exists.' };
+  try {
+    const updatedDepartment = await updateExistingDepartment(departmentId, data);
+     if (!updatedDepartment) {
+        // This can happen if the new name conflicts with an existing one
+        const existingDept = (await getAllDepartments()).find(d => d.name.toLowerCase() === data.name.toLowerCase() && d.id !== departmentId);
+        if (existingDept) {
+          return { success: false, message: 'Another department with this name already exists.' };
+        }
+        return { success: false, message: 'Department not found or update failed.' };
     }
+    return { success: true, message: 'Department updated successfully.', department: updatedDepartment };
+  } catch (error) {
+    console.error("[Server Action] Error updating department:", error);
+    return { success: false, message: 'Failed to update department due to a server error.' };
   }
-  
-  departmentsStore[departmentIndex] = {
-    ...departmentsStore[departmentIndex],
-    name: name ?? departmentsStore[departmentIndex].name,
-    status: status ?? departmentsStore[departmentIndex].status,
-  };
-
-  // Return a serializable copy
-  return { success: true, message: 'Department updated successfully.', department: JSON.parse(JSON.stringify(departmentsStore[departmentIndex])) };
 }

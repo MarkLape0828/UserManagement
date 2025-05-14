@@ -42,8 +42,10 @@ export type AdminEditUserFormData = z.infer<typeof AdminEditUserSchema>;
 export const DepartmentSchema = z.object({
   id: z.string(),
   name: z.string().min(1, { message: 'Department name is required.' }).max(100, { message: 'Department name cannot exceed 100 characters.' }),
+  nameLower: z.string().optional(), // For case-insensitive queries
   status: z.enum(['active', 'inactive']),
-  // employeeCount removed
+  createdAt: z.any().optional(), // Firestore Timestamp or Date
+  updatedAt: z.any().optional(), // Firestore Timestamp or Date
 });
 export type Department = z.infer<typeof DepartmentSchema>;
 
@@ -53,8 +55,8 @@ export const AddDepartmentSchema = z.object({
 export type AddDepartmentFormData = z.infer<typeof AddDepartmentSchema>;
 
 export const EditDepartmentSchema = z.object({
-  name: z.string().min(1, { message: 'Department name is required.' }).max(100, { message: 'Department name cannot exceed 100 characters.' }),
-  status: z.enum(['active', 'inactive'], { required_error: 'Status is required.' }),
+  name: z.string().min(1, { message: 'Department name is required.' }).max(100, { message: 'Department name cannot exceed 100 characters.' }).optional(),
+  status: z.enum(['active', 'inactive'], { required_error: 'Status is required.' }).optional(),
 });
 export type EditDepartmentFormData = z.infer<typeof EditDepartmentSchema>;
 
@@ -68,11 +70,13 @@ export const EmployeeSchema = z.object({
   userId: z.string(), // Links to AppUser.id
   position: z.string().min(1, "Position is required.").max(100),
   departmentId: z.string().min(1, "Department is required."),
-  hireDate: z.date({
+  hireDate: z.date({ // Will be JS Date object after conversion from Firestore Timestamp
     required_error: "Hire date is required.",
     invalid_type_error: "Invalid date format for hire date.",
   }),
   status: EmployeeStatusSchema,
+  createdAt: z.any().optional(), // Firestore Timestamp or Date
+  updatedAt: z.any().optional(), // Firestore Timestamp or Date
 });
 export type Employee = z.infer<typeof EmployeeSchema>;
 
@@ -80,7 +84,7 @@ export const AddEmployeeSchema = z.object({
   userId: z.string().min(1, "User account is required."),
   position: z.string().min(1, "Position is required.").max(100),
   departmentId: z.string().min(1, "Department is required."),
-  hireDate: z.date({
+  hireDate: z.date({ // Expecting JS Date from the form
     required_error: "Hire date is required.",
     invalid_type_error: "Invalid date format for hire date.",
   }),
@@ -89,10 +93,9 @@ export const AddEmployeeSchema = z.object({
 export type AddEmployeeFormData = z.infer<typeof AddEmployeeSchema>;
 
 export const EditEmployeeSchema = z.object({
-  // userId is not editable directly here as it links the employee record to a user account
   position: z.string().min(1, "Position is required.").max(100),
   departmentId: z.string().min(1, "Department is required."),
-  hireDate: z.date({
+  hireDate: z.date({ // Expecting JS Date from the form
     required_error: "Hire date is required.",
     invalid_type_error: "Invalid date format for hire date.",
   }),
@@ -101,13 +104,13 @@ export const EditEmployeeSchema = z.object({
 export type EditEmployeeFormData = z.infer<typeof EditEmployeeSchema>;
 
 
-// Audit Log Schema (for footprint)
+// Audit Log Schema
 export const AuditLogEntrySchema = z.object({
   id: z.string(),
   employeeId: z.string(),
-  timestamp: z.string(), // ISO datetime string
-  action: z.string(), // e.g., "EMPLOYEE_CREATED", "DEPARTMENT_TRANSFER", "STATUS_CHANGE"
-  details: z.string(), // Could be a JSON string of { field, oldValue, newValue } or a descriptive message
-  changedByUserId: z.string(), // Admin user ID who made the change
+  timestamp: z.string(), // Should be ISO datetime string after conversion
+  action: z.string(), 
+  details: z.string(), 
+  changedByUserId: z.string(),
 });
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;

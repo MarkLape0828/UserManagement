@@ -1,34 +1,37 @@
 
 'use server';
 
-import { z } from 'zod';
 import type { Employee, AuditLogEntry, AddEmployeeFormData, EditEmployeeFormData } from '@/lib/schemas';
-import { getUsers, type AppUser } from './auth'; // To link employees to users
-import { getDepartments, type Department } from './departments'; // To link employees to departments
+import { getUsers as getAllAppUsers, type AppUser } from './auth'; 
+import { getDepartments as getAllActiveDepartments, type Department } from './departments';
+import { 
+    getAllEmployees as fetchAllEmployees,
+    getEmployeeById as fetchEmployeeById,
+    createEmployee as persistEmployee,
+    updateExistingEmployee as persistUpdateEmployee,
+    createAuditLogEntry,
+    // getAuditLogsForEmployee as fetchAuditLogs // To be used later
+} from '@/services/employeeService';
+import { getDepartmentById } from '@/services/departmentService'; // For enriching department name
 
-// In-memory store for demo purposes - Initialize with empty arrays
-// Data will be reset on server restarts or new server instances.
-let employees: Employee[] = [];
-let auditLog: AuditLogEntry[] = [];
-
+// Data is now managed by Firestore via services. In-memory arrays are removed.
 
 function generateEmployeeId(): string {
   const prefix = "EMP";
-  const nextId = employees.length > 0 ? Math.max(...employees.map(e => parseInt(e.id.substring(prefix.length), 10))) + 1 : 1;
-  return `${prefix}${String(nextId).padStart(3, '0')}`;
+  // For Firestore, IDs are typically auto-generated or can be custom.
+  // This function provides a consistent format if we decide to generate custom IDs.
+  // For now, we'll let Firestore auto-generate IDs for employees,
+  // but if a specific format is needed, this can be adapted.
+  // For simplicity, we will generate a client-side unique ID for now.
+  // A more robust solution might involve a Firestore counter or UUIDs.
+  const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+  const timestampSuffix = Date.now().toString().slice(-5);
+  return `${prefix}${timestampSuffix}${randomSuffix}`;
 }
 
 // --- Audit Log ---
-async function addAuditLogEntry(employeeId: string, action: string, details: string, changedByUserId: string): Promise<void> {
-  const newLogEntry: AuditLogEntry = {
-    id: `log_${Date.now()}_${auditLog.length + 1}`,
-    employeeId,
-    timestamp: new Date().toISOString(),
-    action,
-    details,
-    changedByUserId,
-  };
-  auditLog.push(newLogEntry);
+async function addAuditLog(employeeId: string, action: string, details: string, changedByUserId: string): Promise<void> {
+  await createAuditLogEntry(employeeId, action, details, changedByUserId);
 }
 
 // --- Employee Data with User and Department Info ---
@@ -39,10 +42,13 @@ export interface EnrichedEmployee extends Employee {
 }
 
 export async function getEnrichedEmployees(): Promise<EnrichedEmployee[]> {
-  const allUsers = await getUsers();
-  const allDepartments = await getDepartments();
+  const [allEmployees, allUsers, allDepartments] = await Promise.all([
+    fetchAllEmployees(),
+    getAllAppUsers(), // This fetches all users (already without passwords)
+    getAllActiveDepartments() // This fetches all departments
+  ]);
 
-  return employees.map(emp => {
+  return allEmployees.map(emp => {
     const user = allUsers.find(u => u.id === emp.userId);
     const department = allDepartments.find(d => d.id === emp.departmentId);
     return {
@@ -55,47 +61,56 @@ export async function getEnrichedEmployees(): Promise<EnrichedEmployee[]> {
 }
 
 export async function getEmployeeById(employeeId: string): Promise<Employee | undefined> {
-  return employees.find(emp => emp.id === employeeId);
+  return await fetchEmployeeById(employeeId);
 }
 
 export async function getUsersNotYetEmployees(): Promise<AppUser[]> {
-  const allUsers = await getUsers();
-  const employeeUserIds = new Set(employees.map(e => e.userId));
-  return allUsers.filter(user => !employeeUserIds.has(user.id) && user.role === 'employee'); // Only 'employee' role users for now
+  const [allUsers, currentEmployees] = await Promise.all([
+    getAllAppUsers(), // Fetches AppUser without password
+    fetchAllEmployees()
+  ]);
+  const employeeUserIds = new Set(currentEmployees.map(e => e.userId));
+  return allUsers.filter(user => !employeeUserIds.has(user.id) && user.role === 'employee');
 }
 
 
 export async function addEmployee(data: AddEmployeeFormData, adminUserId: string): Promise<{ success: boolean; message: string; employee?: EnrichedEmployee }> {
-  // Basic validation (more complex validation with Zod schema on client/server boundary)
-  if (employees.some(e => e.userId === data.userId)) {
-    return { success: false, message: 'This user is already registered as an employee.' };
+  const newEmployeeId = generateEmployeeId(); // Generate our custom formatted ID
+  
+  const createdEmployee = await persistEmployee(data, newEmployeeId);
+
+  if (!createdEmployee) {
+    // This can happen if the userId is already linked to an employee
+    return { success: false, message: 'This user is already registered as an employee or an error occurred.' };
   }
 
-  const newEmployeeId = generateEmployeeId();
-  const newEmployee: Employee = {
-    id: newEmployeeId,
-    ...data,
-  };
-  employees.push(newEmployee);
-
-  await addAuditLogEntry(newEmployee.id, 'EMPLOYEE_CREATED', `Employee ${newEmployee.id} created.`, adminUserId);
+  await addAuditLog(createdEmployee.id, 'EMPLOYEE_CREATED', `Employee ${createdEmployee.id} created.`, adminUserId);
   
-  const enriched = (await getEnrichedEmployees()).find(e => e.id === newEmployee.id);
-  return { success: true, message: 'Employee added successfully.', employee: enriched };
+  // Re-fetch enriched data to return the complete object
+  const allUsers = await getAllAppUsers();
+  const department = await getDepartmentById(createdEmployee.departmentId);
+
+  const user = allUsers.find(u => u.id === createdEmployee.userId);
+  const enrichedEmployee: EnrichedEmployee = {
+      ...createdEmployee,
+      userEmail: user?.email,
+      userName: user ? `${user.firstName} ${user.lastName}` : 'N/A',
+      departmentName: department?.name,
+  };
+  
+  return { success: true, message: 'Employee added successfully.', employee: enrichedEmployee };
 }
 
 export async function updateEmployee(employeeId: string, data: EditEmployeeFormData, adminUserId: string): Promise<{ success: boolean; message: string; employee?: EnrichedEmployee }> {
-  const employeeIndex = employees.findIndex(e => e.id === employeeId);
-  if (employeeIndex === -1) {
+  const oldEmployee = await fetchEmployeeById(employeeId);
+  if (!oldEmployee) {
     return { success: false, message: 'Employee not found.' };
   }
 
-  const oldEmployee = { ...employees[employeeIndex] }; // Copy for audit
-  const updatedEmployee: Employee = {
-    ...employees[employeeIndex],
-    ...data,
-  };
-  employees[employeeIndex] = updatedEmployee;
+  const updatedEmployee = await persistUpdateEmployee(employeeId, data);
+  if (!updatedEmployee) {
+    return { success: false, message: 'Failed to update employee record in the database.' };
+  }
 
   // Audit logging for changes
   const changes: string[] = [];
@@ -103,28 +118,36 @@ export async function updateEmployee(employeeId: string, data: EditEmployeeFormD
     changes.push(`Position: '${oldEmployee.position}' to '${updatedEmployee.position}'`);
   }
   if (oldEmployee.departmentId !== updatedEmployee.departmentId) {
-    const oldDept = (await getDepartments()).find(d => d.id === oldEmployee.departmentId)?.name || oldEmployee.departmentId;
-    const newDept = (await getDepartments()).find(d => d.id === updatedEmployee.departmentId)?.name || updatedEmployee.departmentId;
+    const oldDept = (await getDepartmentById(oldEmployee.departmentId))?.name || oldEmployee.departmentId;
+    const newDept = (await getDepartmentById(updatedEmployee.departmentId))?.name || updatedEmployee.departmentId;
     changes.push(`Department: '${oldDept}' to '${newDept}'`);
   }
-  if (oldEmployee.hireDate.toISOString() !== updatedEmployee.hireDate.toISOString()) {
-     changes.push(`Hire Date: '${oldEmployee.hireDate.toLocaleDateString()}' to '${updatedEmployee.hireDate.toLocaleDateString()}'`);
+  
+  const oldHireDateStr = oldEmployee.hireDate instanceof Date ? oldEmployee.hireDate.toLocaleDateString() : new Date(oldEmployee.hireDate).toLocaleDateString();
+  const newHireDateStr = updatedEmployee.hireDate instanceof Date ? updatedEmployee.hireDate.toLocaleDateString() : new Date(updatedEmployee.hireDate).toLocaleDateString();
+  if (oldHireDateStr !== newHireDateStr) {
+     changes.push(`Hire Date: '${oldHireDateStr}' to '${newHireDateStr}'`);
   }
+
   if (oldEmployee.status !== updatedEmployee.status) {
     changes.push(`Status: '${oldEmployee.status}' to '${updatedEmployee.status}'`);
   }
 
   if (changes.length > 0) {
-    await addAuditLogEntry(employeeId, 'EMPLOYEE_UPDATED', changes.join('; '), adminUserId);
-  } else {
-    // If no data changed, still log an attempt or skip. For now, we'll only log if data changed.
+    await addAuditLog(employeeId, 'EMPLOYEE_UPDATED', changes.join('; '), adminUserId);
   }
   
-  const enriched = (await getEnrichedEmployees()).find(e => e.id === updatedEmployee.id);
-  return { success: true, message: 'Employee updated successfully.', employee: enriched };
-}
+  // Re-fetch enriched data
+  const allUsers = await getAllAppUsers();
+  const department = await getDepartmentById(updatedEmployee.departmentId);
+  const user = allUsers.find(u => u.id === updatedEmployee.userId);
+  
+  const enrichedEmployee: EnrichedEmployee = {
+    ...updatedEmployee,
+    userEmail: user?.email,
+    userName: user ? `${user.firstName} ${user.lastName}` : 'N/A',
+    departmentName: department?.name,
+  };
 
-// Placeholder for fetching audit log for an employee (to be used later)
-// export async function getAuditLogForEmployee(employeeId: string): Promise<AuditLogEntry[]> {
-//   return auditLog.filter(log => log.employeeId === employeeId).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-// }
+  return { success: true, message: 'Employee updated successfully.', employee: enrichedEmployee };
+}
