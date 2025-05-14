@@ -10,6 +10,8 @@ import { getDepartments, type Department } from './departments'; // To link empl
 let employees: Employee[] = [
   { id: 'EMP001', userId: '2', position: 'Software Engineer', departmentId: 'dept_2', hireDate: new Date('2023-01-15'), status: 'active' },
   { id: 'EMP002', userId: '3', position: 'HR Specialist', departmentId: 'dept_1', hireDate: new Date('2022-05-20'), status: 'active' },
+  // New sample employee linked to user@example.com (assuming userId '3')
+  { id: 'EMP003', userId: '3', position: 'Marketing Specialist', departmentId: 'dept_1', hireDate: new Date('2023-03-10'), status: 'active' },
 ];
 
 let auditLog: AuditLogEntry[] = [];
@@ -130,3 +132,4 @@ export async function updateEmployee(employeeId: string, data: EditEmployeeFormD
 // export async function getAuditLogForEmployee(employeeId: string): Promise<AuditLogEntry[]> {
 //   return auditLog.filter(log => log.employeeId === employeeId).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 // }
+
